@@ -143,6 +143,11 @@ function frame(now) {
 requestAnimationFrame(frame);
 addEventListener('resize', () => scene.resize());
 
+// pannello di regia (?mixer=1): slider live sui parametri audio + copia valori
+if (new URLSearchParams(location.search).has('mixer')) {
+  import('./mixer.js').then((m) => m.buildMixer(audio));
+}
+
 // modalità prova (?prova=1): il tasto B scatena il ciclo del blocco, per regia e verifica
 if (new URLSearchParams(location.search).has('prova')) {
   addEventListener('keydown', (e) => {
