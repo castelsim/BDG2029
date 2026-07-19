@@ -48,8 +48,10 @@ function wire(src) {
     if (!feedActive(src)) return;
     // sgrana i lotti nel tempo, così l'arrivo appare continuo
     setTimeout(() => {
-      scene.addTx(e.detail);
-      audio.grain(feeTier(e.detail.feeRate), Math.min(1, (e.detail.vsize ?? 140) / 1200));
+      const prt = scene.addTx(e.detail);
+      // il suono arriva dalla direzione in cui la particella entra in scena
+      const pan = prt ? Math.max(-0.9, Math.min(0.9, Math.cos(prt.ang) * 1.1)) : 0;
+      audio.grain(feeTier(e.detail.feeRate), Math.min(1, (e.detail.vsize ?? 140) / 1200), pan);
     }, Math.random() * 1100);
   });
   src.addEventListener('projected', (e) => {

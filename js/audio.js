@@ -17,13 +17,15 @@ export class GranularEngine {
     this.silT1 = 0;
     this.params = {
       master: 0.85,
-      grainQ: 16,        // strettezza della risonanza: più alto = più vetro
+      glass: 0.3,        // 0 = solo tono puro (il suono «di prima») · 1 = solo vetro/rumore
+      grainQ: 16,        // strettezza della risonanza dello strato vetro
       grainLevel: 1,
-      grainDurMin: 0.06, // s, transazioni leggere
-      grainDurMax: 0.24, // s, transazioni pesanti
+      grainDurMin: 0.08, // s, transazioni leggere
+      grainDurMax: 0.26, // s, transazioni pesanti
       droneLevel: 1,
       droneBeatMax: 1.6, // Hz di battimento del drone a tensione piena
-      macroLevel: 1,     // letto di rumore della mempool
+      macroLevel: 0.35,  // letto di rumore della mempool (basso: non deve mascherare i grani)
+      chordGlass: 0.35,  // quota rumore→tono nell'accordo
       chordLevel: 1,
       selectionLevel: 1,
       verbSeconds: 3.5,
@@ -159,9 +161,10 @@ export class GranularEngine {
     this.droneGain.gain.setTargetAtTime((0.05 + 0.03 * this.macro.fillRatio) * p.droneLevel, ct, 12);
   }
 
-  // GRANO-VETRO: rumore in banda stretta risonante sul grado pentatonico.
-  // brillantezza ← fee (tier) · corpo/durata ← peso (weight 0..1)
-  grain(tier, weight = 0.3) {
+  // GRANO: tono puro in primo piano (correlazione immediata particella→suono, il carattere
+  // «di prima») + strato vetro regolabile (params.glass). Brillantezza ← fee ·
+  // corpo/durata ← peso · pan ← direzione d'ingresso della particella in scena.
+  grain(tier, weight = 0.3, panv = null) {
     if (!this.active || this.grains > 24 || this._inSilence()) return;
     this.grains++;
     const c = this.ctx;
@@ -171,27 +174,44 @@ export class GranularEngine {
     const midi = 57 + 12 * Math.floor(idx / 5) + SCALE[idx % 5];
     const freq = 440 * 2 ** ((midi - 69) / 12);
     const dur = p.grainDurMin + (p.grainDurMax - p.grainDurMin) * weight;
-    const src = c.createBufferSource();
-    src.buffer = this.noise;
-    src.loop = true;
-    src.playbackRate.value = 0.85 + Math.random() * 0.3; // granularità irregolare
-    const bp = c.createBiquadFilter();
-    bp.type = 'bandpass';
-    bp.frequency.value = freq;
-    bp.Q.value = Math.max(3, p.grainQ * (1 - 0.55 * weight)); // pesante = più corpo, meno vetro
-    const g = c.createGain();
-    g.gain.value = 0;
-    const pan = c.createStereoPanner();
-    pan.pan.value = (Math.random() * 2 - 1) * 0.85;
-    src.connect(bp); bp.connect(g); g.connect(pan); pan.connect(this.bus);
     const t = c.currentTime;
-    const peak = (0.05 + 0.11 * tier) * p.grainLevel * Math.sqrt(p.grainQ / 4);
-    g.gain.setValueAtTime(0, t);
-    g.gain.linearRampToValueAtTime(peak, t + 0.004);
-    g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
-    src.start(t, Math.random() * 1.5);
-    src.stop(t + dur + 0.05);
-    src.onended = () => this.grains--;
+    const pan = c.createStereoPanner();
+    pan.pan.value = panv ?? (Math.random() * 2 - 1) * 0.85;
+    pan.connect(this.bus);
+    const peak = (0.05 + 0.09 * tier) * p.grainLevel;
+    // tono puro: il legame diretto con la particella
+    const o = c.createOscillator();
+    o.type = 'sine';
+    o.frequency.value = freq;
+    const og = c.createGain();
+    og.gain.value = 0;
+    o.connect(og); og.connect(pan);
+    og.gain.setValueAtTime(0, t);
+    og.gain.linearRampToValueAtTime(peak * (1 - 0.6 * p.glass), t + 0.004);
+    og.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+    o.start(t);
+    o.stop(t + dur + 0.05);
+    o.onended = () => this.grains--;
+    // strato vetro: aria intorno al tono, mai al suo posto
+    if (p.glass > 0.02) {
+      const src = c.createBufferSource();
+      src.buffer = this.noise;
+      src.loop = true;
+      src.playbackRate.value = 0.85 + Math.random() * 0.3;
+      const bp = c.createBiquadFilter();
+      bp.type = 'bandpass';
+      bp.frequency.value = freq;
+      bp.Q.value = Math.max(3, p.grainQ * (1 - 0.55 * weight));
+      const g = c.createGain();
+      g.gain.value = 0;
+      src.connect(bp); bp.connect(g); g.connect(pan);
+      const gp = peak * p.glass * Math.sqrt(p.grainQ / 4);
+      g.gain.setValueAtTime(0, t);
+      g.gain.linearRampToValueAtTime(gp, t + 0.006);
+      g.gain.exponentialRampToValueAtTime(0.0001, t + dur * 1.2);
+      src.start(t, Math.random() * 1.5);
+      src.stop(t + dur * 1.2 + 0.05);
+    }
   }
 
   // selezione (aggregata): presenza breve per chi entra, assestamento sordo per chi esce
@@ -267,39 +287,42 @@ export class GranularEngine {
     degrees.forEach((deg, i) => {
       const midi = 33 + 12 * (i + 1) + SCALE[deg]; // voci ancorate ad A1, su tre ottave
       const freq = 440 * 2 ** ((midi - 69) / 12);
-      // voce-rumore che si stringe fino a diventare tono
-      const src = c.createBufferSource();
-      src.buffer = this.noise;
-      src.loop = true;
-      const bp = c.createBiquadFilter();
-      bp.type = 'bandpass';
-      bp.frequency.value = freq;
-      bp.Q.setValueAtTime(2, when);
-      bp.Q.exponentialRampToValueAtTime(30, when + 0.6);
-      const g = c.createGain();
-      g.gain.value = 0;
       const pan = c.createStereoPanner();
       pan.pan.value = (i - 1) * 0.5;
-      src.connect(bp); bp.connect(g); g.connect(pan); pan.connect(this.bus);
+      pan.connect(this.bus);
       const peak = 0.11 * p.chordLevel / (1 + i * 0.3);
-      g.gain.setValueAtTime(0, when);
-      g.gain.linearRampToValueAtTime(peak, when + 0.03 + i * 0.02);
-      g.gain.setTargetAtTime(peak * 0.6, when + 0.4, 0.8);
-      g.gain.exponentialRampToValueAtTime(0.0001, when + 3.2); // coda chiusa PRIMA del silenzio
-      src.start(when, Math.random() * 1.5);
-      src.stop(when + 3.4);
-      // il tono puro affiora sotto il rumore
+      // il tono in primo piano: risoluzione chiara, come il suono «di prima»
       const o = c.createOscillator();
       o.type = 'sine';
       o.frequency.value = freq;
       const og = c.createGain();
       og.gain.value = 0;
       o.connect(og); og.connect(pan);
-      og.gain.setValueAtTime(0, when + 0.25);
-      og.gain.linearRampToValueAtTime(peak * 0.5, when + 1);
-      og.gain.exponentialRampToValueAtTime(0.0001, when + 3.2);
-      o.start(when + 0.25);
+      og.gain.setValueAtTime(0, when);
+      og.gain.linearRampToValueAtTime(peak, when + 0.03 + i * 0.02);
+      og.gain.setTargetAtTime(peak * 0.6, when + 0.4, 0.8);
+      og.gain.exponentialRampToValueAtTime(0.0001, when + 3.2); // coda chiusa PRIMA del silenzio
+      o.start(when);
       o.stop(when + 3.4);
+      // l'aria che si stringe intorno al tono (quota chordGlass)
+      if (p.chordGlass > 0.02) {
+        const src = c.createBufferSource();
+        src.buffer = this.noise;
+        src.loop = true;
+        const bp = c.createBiquadFilter();
+        bp.type = 'bandpass';
+        bp.frequency.value = freq;
+        bp.Q.setValueAtTime(2, when);
+        bp.Q.exponentialRampToValueAtTime(30, when + 0.6);
+        const g = c.createGain();
+        g.gain.value = 0;
+        src.connect(bp); bp.connect(g); g.connect(pan);
+        g.gain.setValueAtTime(0, when);
+        g.gain.linearRampToValueAtTime(peak * p.chordGlass, when + 0.05);
+        g.gain.exponentialRampToValueAtTime(0.0001, when + 3.2);
+        src.start(when, Math.random() * 1.5);
+        src.stop(when + 3.4);
+      }
     });
   }
 

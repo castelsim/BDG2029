@@ -82,6 +82,7 @@ export class Scene {
       flash: 0,
       dimTil: 0,
     });
+    return this.particles[this.particles.length - 1]; // per la correlazione audio (pan)
   }
 
   // soglia e capienza dal blocco proiettato reale (o simulato)
