@@ -89,18 +89,22 @@ export class Scene {
     this._crowdAt = performance.now();
     const bands = this.bands;
     const N = this.max >= 900 ? 2600 : 900; // campione: desktop / mobile
-    let total = 0;
-    for (const b of bands) total += b.nTx;
-    if (total === 0) return;
     const nBands = bands.length;
+    if (nBands < 2) return;
+    // la fascia 0 è il prossimo blocco: vive DENTRO l'anello (particelle selezionate),
+    // non nella galassia. La fila inizia da chi aspetta i blocchi successivi.
+    let queueTotal = 0;
+    for (let i = 1; i < nBands; i++) queueTotal += bands[i].nTx;
+    if (queueTotal === 0) return;
     const dots = [];
-    for (let i = 0; i < nBands; i++) {
+    for (let i = 1; i < nBands; i++) {
       const b = bands[i];
       const rand = mulberry32(1000 + i); // seed fisso: il campione non «salta» tra un rebuild e l'altro
-      const n = Math.round((b.nTx / total) * N);
-      const rBase = this.R * (1.18 + (i / nBands) * 1.15);
-      const thick = this.R * (1.15 / nBands) * 1.6;
-      const depth = i / (nBands - 1 || 1); // 0 = prossima al blocco · 1 = fondo della fila
+      const n = Math.round((b.nTx / queueTotal) * N);
+      const qi = (i - 1) / (nBands - 1);
+      const rBase = this.R * (1.18 + qi * 1.15);
+      const thick = this.R * (1.15 / (nBands - 1)) * 1.6;
+      const depth = (i - 1) / (nBands - 2 || 1); // 0 = subito dopo il prossimo blocco · 1 = fondo
       for (let j = 0; j < n; j++) {
         const fee = b.feeMin + (b.feeMax - b.feeMin) * rand() * rand(); // il grosso vicino al minimo
         const r = rBase + ((rand() + rand()) / 2) * thick;
@@ -156,6 +160,25 @@ export class Scene {
         .filter((p) => p.state === 'selected')
         .sort((a, b) => a.t - b.t);
       for (const p of sel.slice(0, -free)) this._evict(p);
+    } else {
+      // capienza piena: chi offre di più scalza chi offre meno (sostituzione
+      // fino all'ultimo istante; margine anti-sfarfallio tra fee quasi uguali)
+      const cand = this.particles
+        .filter((p) => p.state === 'waiting' && p.t >= this.threshold)
+        .sort((a, b) => b.t - a.t)
+        .slice(0, 12);
+      if (cand.length) {
+        const sel = this.particles
+          .filter((p) => p.state === 'selected')
+          .sort((a, b) => a.t - b.t);
+        let ci = 0;
+        for (const worst of sel) {
+          if (ci >= cand.length || cand[ci].t <= worst.t + 0.02) break;
+          this._evict(worst);
+          this._promote(cand[ci]);
+          ci++;
+        }
+      }
     }
   }
 
@@ -166,8 +189,10 @@ export class Scene {
     for (const p of this.particles) {
       if (p.state === 'selected') p.state = 'confirmed';
     }
-    // la prima fila della galassia entra nel blocco: sparisce nel blackout
-    if (this.crowd) this.crowd = this.crowd.filter((d) => d.band !== 0);
+    // la prima fila della galassia diventa il nuovo blocco in formazione: sparisce
+    // nel blackout, e la galassia si ricostruisce presto sui dati nuovi
+    if (this.crowd) this.crowd = this.crowd.filter((d) => d.band !== 1);
+    this._crowdAt = 0;
   }
 
   stats() {
