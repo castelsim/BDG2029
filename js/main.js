@@ -53,6 +53,12 @@ function wire(src) {
   src.addEventListener('projected', (e) => {
     if (!feedActive(src)) return;
     scene.setBlock(e.detail.feeFloor, e.detail.fillRatio);
+    if (e.detail.bands) scene.setCrowd(e.detail.bands);
+  });
+  src.addEventListener('stats', (e) => {
+    if (!feedActive(src)) return;
+    const conto = document.getElementById('conto-attesa');
+    if (conto) conto.textContent = e.detail.pending.toLocaleString('it-IT');
   });
   src.addEventListener('block', (e) => {
     if (!feedActive(src)) return;

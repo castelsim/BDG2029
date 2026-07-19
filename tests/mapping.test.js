@@ -20,11 +20,12 @@ test('feeTier è monotona crescente', () => {
   assert.ok(feeTier(2) < feeTier(50));
 });
 
-test('particleColor: stop del gradiente temperatura', () => {
-  assert.equal(particleColor(0), 'rgb(255, 154, 60)');
-  assert.equal(particleColor(0.45), 'rgb(255, 232, 200)');
-  assert.equal(particleColor(0.8), 'rgb(220, 235, 255)');
-  assert.equal(particleColor(1), 'rgb(180, 210, 255)');
+test('particleColor: stop della scala termica ghiaccio→fuoco', () => {
+  assert.equal(particleColor(0), 'rgb(180, 210, 255)');
+  assert.equal(particleColor(0.35), 'rgb(255, 232, 200)');
+  assert.equal(particleColor(0.6), 'rgb(255, 178, 94)');
+  assert.equal(particleColor(0.8), 'rgb(255, 122, 47)');
+  assert.equal(particleColor(1), 'rgb(255, 64, 40)');
 });
 
 test('ringProgress: 0 all\'inizio, 0.45 a 5 min, tetto 0.9 da 10 min in poi', () => {

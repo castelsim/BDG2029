@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
-import { normalizeBlock, normalizeProjected, extractTx, pickTip } from '../js/feed.js';
+import { normalizeBlock, normalizeProjected, normalizeBands, extractTx, pickTip } from '../js/feed.js';
 
 const fx = JSON.parse(readFileSync(new URL('./fixtures/ws_samples.json', import.meta.url)));
 
@@ -29,6 +29,16 @@ test('normalizeProjected: array vuoto → null, fillRatio mai > 1', () => {
   assert.equal(normalizeProjected([]), null);
   const p = normalizeProjected([{ blockVSize: 2_000_000, feeRange: [1], medianFee: 1 }]);
   assert.equal(p.fillRatio, 1);
+});
+
+test('normalizeBands: una fascia per blocco proiettato, con fee min/max e peso medio', () => {
+  const bands = normalizeBands(fx.mempoolBlocks);
+  assert.equal(bands.length, 2);
+  assert.equal(bands[0].nTx, 5814);
+  assert.equal(bands[0].feeMin, fx.mempoolBlocks[0].feeRange[0]);
+  assert.equal(bands[0].feeMax, fx.mempoolBlocks[0].feeRange[6]);
+  assert.ok(Math.abs(bands[0].vsizePerTx - 997986 / 5814) < 1e-6);
+  assert.deepEqual(normalizeBands(undefined), []);
 });
 
 test('extractTx: usa rate se presente, scarta vsize non positivi', () => {

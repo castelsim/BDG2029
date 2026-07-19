@@ -3,6 +3,7 @@ import {
   feeTier, particleColor, particleRadius, haloAlpha,
   ringProgress, capSelected, evictionIndex,
 } from './mapping.js';
+import { mulberry32 } from './fallback.js';
 
 const TAU = Math.PI * 2;
 const BEAT = { BLACKOUT: 150, FALL: 1200, QUIET: 3000 }; // ms
@@ -33,6 +34,7 @@ export class Scene {
     this.cx = w / 2;
     this.cy = h * 0.5;
     this.R = Math.min(w, h) * 0.28;
+    if (this.bands) { this._crowdAt = 0; this._drawCrowd(); }
   }
 
   // ancora l'anello-timer al tempo reale già trascorso dall'ultimo blocco
@@ -72,6 +74,50 @@ export class Scene {
     this.threshold = feeTier(feeFloor);
     this.capSel = capSelected(fillRatio);
     this._reconcile();
+  }
+
+  // lo strato-folla: TUTTA la coda reale, una fascia per blocco proiettato.
+  // Ridisegnato su canvas fuori schermo al massimo ogni 20 s (è un'immagine, non particelle).
+  setCrowd(bands) {
+    if (!Array.isArray(bands) || bands.length === 0) return;
+    this.bands = bands;
+    const now = performance.now();
+    if (!this._crowdAt || now - this._crowdAt > 20_000) this._drawCrowd();
+  }
+
+  _drawCrowd() {
+    this._crowdAt = performance.now();
+    const bands = this.bands;
+    const off = this._crowd || (this._crowd = document.createElement('canvas'));
+    if (off.width !== this.w || off.height !== this.h) { off.width = this.w; off.height = this.h; }
+    const c = off.getContext('2d');
+    c.clearRect(0, 0, this.w, this.h);
+    let total = 0;
+    for (const b of bands) total += b.nTx;
+    const budget = Math.min(120_000, total);
+    const scale = budget / Math.max(1, total);
+    const nBands = bands.length;
+    for (let i = 0; i < nBands; i++) {
+      const b = bands[i];
+      const rand = mulberry32(1000 + i); // seed fisso: la nube non «salta» tra un ridisegno e l'altro
+      const n = Math.round(b.nTx * scale);
+      const rBase = this.R * (1.18 + (i / nBands) * 1.15);
+      const thick = this.R * (1.15 / nBands) * 1.6; // fasce sovrapposte: nube, non bersaglio
+      // 5 secchielli di colore per fascia: fillStyle cambia 5 volte, non n volte
+      for (let k = 0; k < 5; k++) {
+        const fee = b.feeMin + ((b.feeMax - b.feeMin) * k * k) / 16; // quadratica: il grosso vicino al minimo
+        c.fillStyle = particleColor(feeTier(fee));
+        c.globalAlpha = 0.33;
+        const nk = Math.ceil(n / 5);
+        for (let j = 0; j < nk; j++) {
+          const ang = rand() * TAU;
+          const r = rBase + ((rand() + rand()) / 2) * thick; // bordi morbidi
+          const s = rand() < 0.85 ? 1 : 2;
+          c.fillRect(this.cx + Math.cos(ang) * r, this.cy + Math.sin(ang) * r, s, s);
+        }
+      }
+    }
+    c.globalAlpha = 1;
   }
 
   setTension(t) { this.tension = t; }
@@ -169,6 +215,9 @@ export class Scene {
     const ctx = this.ctx;
     const beatT = this.beat ? now - this.beat.t0 : -1;
 
+    // ritorno da tab in pausa: niente scie sul frame di recupero (salti di posizione enormi)
+    if (dt >= 90) for (const p of this.particles) p.px = undefined;
+
     ctx.fillStyle = 'rgba(5, 5, 6, 0.4)';
     ctx.fillRect(0, 0, this.w, this.h);
 
@@ -181,7 +230,17 @@ export class Scene {
     const quiet = beatT > BEAT.BLACKOUT + BEAT.FALL;
     const dim = quiet ? 0.35 : 1;
 
-    // particelle: alone (valore) + nucleo (fee)
+    // la nube della fila vera: deriva lentissima, respiro leggero
+    if (this._crowd) {
+      ctx.save();
+      ctx.globalAlpha = (quiet ? 0.12 : 0.5) * (0.85 + 0.15 * Math.sin((now / 9000) * TAU));
+      ctx.translate(this.cx, this.cy);
+      ctx.rotate(now * 0.0000025); // ~un giro in 42 minuti
+      ctx.drawImage(this._crowd, -this.cx, -this.cy);
+      ctx.restore();
+    }
+
+    // particelle: scia (valore, solo in movimento) + nucleo (fee)
     for (let i = this.particles.length - 1; i >= 0; i--) {
       const p = this.particles[i];
       if (this._updateParticle(p, now, dt)) { this.particles.splice(i, 1); continue; }
@@ -189,12 +248,34 @@ export class Scene {
       const y = this.cy + Math.sin(p.ang) * p.r;
       const tw = 0.55 + 0.45 * Math.sin(p.born + now * 0.001 * (0.6 + p.t * 1.6));
       const a = Math.max(0, p.alpha * tw * dim);
-      ctx.fillStyle = p.color;
-      ctx.globalAlpha = a * p.halo * 0.35;
-      ctx.beginPath();
-      ctx.arc(x, y, p.rad * 3, 0, TAU);
-      ctx.fill();
+
+      // scia-cometa: lunghezza e luminosità = valore trasferito (scala log via halo);
+      // appare solo nei movimenti veri (ingresso, espulsione, ingresso nel blocco),
+      // mai nell'orbita di attesa: il gating è la velocità reale della particella.
+      if (p.px !== undefined && !this.reduced) {
+        const dx = x - p.px, dy = y - p.py;
+        const speed = Math.hypot(dx, dy) / Math.max(1, dt) * 16.7; // px per frame a 60 fps
+        if (speed > 1.4) {
+          const len = Math.min(90, speed * (3 + p.halo * 24));
+          const bx = x - (dx / Math.hypot(dx, dy)) * len;
+          const by = y - (dy / Math.hypot(dx, dy)) * len;
+          const grad = ctx.createLinearGradient(x, y, bx, by);
+          grad.addColorStop(0, p.color);
+          grad.addColorStop(1, 'rgba(5, 5, 6, 0)');
+          ctx.strokeStyle = grad;
+          ctx.lineWidth = p.rad * 1.5;
+          ctx.lineCap = 'round';
+          ctx.globalAlpha = a * (0.2 + 0.65 * p.halo);
+          ctx.beginPath();
+          ctx.moveTo(x, y);
+          ctx.lineTo(bx, by);
+          ctx.stroke();
+        }
+      }
+      p.px = x; p.py = y;
+
       ctx.globalAlpha = a;
+      ctx.fillStyle = p.color;
       ctx.beginPath();
       ctx.arc(x, y, p.rad, 0, TAU);
       ctx.fill();

@@ -72,7 +72,19 @@ export class SimFeed extends EventTarget {
 
   _statsLoop() {
     if (!this.running) return;
-    this._emit('projected', { fillRatio: this.fill, feeFloor: 0.2 + this.fill * 2, medianFee: 1 });
+    // fasce sintetiche ma plausibili: fee decrescenti verso il fondo della coda,
+    // ultima fascia = il grosso della fila (come il catch-all reale)
+    const bands = Array.from({ length: 8 }, (_, i) => {
+      const feeMin = Math.max(0.2, 2.4 - i * 0.3);
+      return {
+        nTx: i < 7 ? 4000 + Math.round(this.rand() * 2500) : Math.round(this.pending * 0.5),
+        feeMin,
+        feeMax: feeMin + 0.6 + this.rand() * 2,
+        medianFee: feeMin + 0.3,
+        vsizePerTx: 250 + Math.round(this.rand() * 150),
+      };
+    });
+    this._emit('projected', { fillRatio: this.fill, feeFloor: 0.2 + this.fill * 2, medianFee: 1, bands });
     this._emit('stats', { pending: Math.round(this.pending), vps: 3000 });
     this._after(5000, () => this._statsLoop());
   }

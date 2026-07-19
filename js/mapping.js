@@ -8,12 +8,13 @@ export function feeTier(feeRate) {
   return Math.log(f / FEE_MIN) / Math.log(FEE_MAX / FEE_MIN);
 }
 
-// gradiente temperatura: ambra profondo → bianco caldo → ghiaccio → freddo estremo
+// scala termica (decisione utente 19/07 sera): ghiaccio = fee bassa → fuoco = fee alta
 const STOPS = [
-  [0.0, [255, 154, 60]],
-  [0.45, [255, 232, 200]],
-  [0.8, [220, 235, 255]],
-  [1.0, [180, 210, 255]],
+  [0.0, [180, 210, 255]],  // ghiaccio: può aspettare
+  [0.35, [255, 232, 200]], // bianco caldo
+  [0.6, [255, 178, 94]],   // ambra
+  [0.8, [255, 122, 47]],   // arancione fuoco
+  [1.0, [255, 64, 40]],    // rosso fuoco: paga per entrare subito
 ];
 
 export function particleColor(t) {

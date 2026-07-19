@@ -23,6 +23,19 @@ export function normalizeProjected(mempoolBlocks) {
   };
 }
 
+// una fascia per blocco proiettato: quante transazioni, con quali fee, che peso medio.
+// È la distribuzione REALE dell'intera coda: la base dello strato-folla.
+export function normalizeBands(mempoolBlocks) {
+  if (!Array.isArray(mempoolBlocks)) return [];
+  return mempoolBlocks.map((b) => ({
+    nTx: b.nTx ?? 0,
+    feeMin: b.feeRange?.[0] ?? 0.1,
+    feeMax: b.feeRange?.[b.feeRange.length - 1] ?? 1,
+    medianFee: b.medianFee ?? 1,
+    vsizePerTx: b.nTx ? (b.blockVSize ?? 0) / b.nTx : 0,
+  }));
+}
+
 export function extractTx(transactions) {
   if (!Array.isArray(transactions)) return [];
   return transactions
@@ -81,7 +94,10 @@ export class MempoolFeed extends EventTarget {
     if (m.block) this._emit('block', normalizeBlock(m.block));
     if (m['mempool-blocks']) {
       const p = normalizeProjected(m['mempool-blocks']);
-      if (p) this._emit('projected', p);
+      if (p) {
+        p.bands = normalizeBands(m['mempool-blocks']);
+        this._emit('projected', p);
+      }
     }
     if (m.transactions) for (const tx of extractTx(m.transactions)) this._emit('tx', tx);
     if (m.mempoolInfo) {

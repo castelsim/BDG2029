@@ -52,7 +52,9 @@ test('SimFeed: a start() emette subito tx/projected/stats con le shape di Mempoo
   f.start();
   f.stop();
   assert.deepEqual(Object.keys(got.tx).sort(), ['feeRate', 'value', 'vsize']);
-  assert.deepEqual(Object.keys(got.projected).sort(), ['feeFloor', 'fillRatio', 'medianFee']);
+  assert.deepEqual(Object.keys(got.projected).sort(), ['bands', 'feeFloor', 'fillRatio', 'medianFee']);
+  assert.equal(got.projected.bands.length, 8);
+  assert.deepEqual(Object.keys(got.projected.bands[0]).sort(), ['feeMax', 'feeMin', 'medianFee', 'nTx', 'vsizePerTx']);
   assert.deepEqual(Object.keys(got.stats).sort(), ['pending', 'vps']);
   assert.equal(f.timers.length, 0, 'stop() svuota i timer');
 });
