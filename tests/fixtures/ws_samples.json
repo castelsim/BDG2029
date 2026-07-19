@@ -1,0 +1,23 @@
+{
+  "transactions": [
+    { "txid": "b925edde755890ffeb7dad856a0e5cba6f5a7a1f0cc837de467ee56c3d11b901", "fee": 322, "vsize": 140.5, "value": 9948050, "rate": 2.2918149466192173, "time": 1784453554 },
+    { "txid": "b389a0969035a8cfa7be318f973a8edb2aacf89cb7d193fab76aacdcf6ac1911", "fee": 67, "vsize": 139.25, "value": 9540, "rate": 0.48114901256732495, "time": 1784453554 },
+    { "txid": "fdaa447cf41631458428b6cfa6c0cdf79deddce5091db7d44bcfdb67feea3e15", "fee": 67, "vsize": 0, "value": 7475, "time": 1784453554 }
+  ],
+  "mempoolBlocks": [
+    { "blockSize": 1568190, "blockVSize": 997986, "nTx": 5814, "totalFees": 950426, "medianFee": 0.5242369838420108, "feeRange": [0.4524236983842011, 0.48955437998744733, 0.5054343807763401, 0.516193895870736, 0.5340035906642729, 1.1011018751208197, 77.89661319073083] },
+    { "blockSize": 1650272, "blockVSize": 997995.5, "nTx": 6849, "totalFees": 434185, "medianFee": 0.4261962376083053, "feeRange": [0.365296803652968, 0.4261962376083054, 0.48434837205130504] }
+  ],
+  "block": {
+    "id": "0000000000000000000209fd7a2ce108f9f703d5384f5d8d496c1450391c51c7",
+    "height": 958705, "timestamp": 1784450605, "tx_count": 6014,
+    "size": 1490715, "weight": 3993852,
+    "extras": { "totalFees": 1061266, "medianFee": 0.49 }
+  },
+  "blocksSnapshot": [
+    { "height": 958702, "timestamp": 1784448800, "tx_count": 4100, "weight": 3900000, "extras": { "totalFees": 800000 } },
+    { "height": 958705, "timestamp": 1784450605, "tx_count": 6014, "weight": 3993852, "extras": { "totalFees": 1061266 } },
+    { "height": 958704, "timestamp": 1784450000, "tx_count": 5000, "weight": 3990000, "extras": { "totalFees": 900000 } }
+  ],
+  "mempoolInfo": { "loaded": true, "size": 78451, "bytes": 41868972 }
+}

@@ -1,0 +1,94 @@
+// js/feed.js — WebSocket mempool.space: normalizzazione messaggi + connessione
+export const WS_URL = 'wss://mempool.space/api/v1/ws';
+
+// --- funzioni pure (testate in node) ---
+
+export function normalizeBlock(b) {
+  return {
+    height: b.height,
+    txCount: b.tx_count ?? 0,
+    weight: b.weight ?? 0,
+    totalFees: b.extras?.totalFees ?? 0,
+    timestampMs: (b.timestamp ?? 0) * 1000,
+  };
+}
+
+export function normalizeProjected(mempoolBlocks) {
+  if (!Array.isArray(mempoolBlocks) || mempoolBlocks.length === 0) return null;
+  const first = mempoolBlocks[0];
+  return {
+    fillRatio: Math.min(1, (first.blockVSize ?? 0) / 1_000_000),
+    feeFloor: first.feeRange?.[0] ?? 0.1,
+    medianFee: first.medianFee ?? 1,
+  };
+}
+
+export function extractTx(transactions) {
+  if (!Array.isArray(transactions)) return [];
+  return transactions
+    .filter((t) => (t.vsize ?? 0) > 0)
+    .map((t) => ({ vsize: t.vsize, feeRate: t.rate ?? t.fee / t.vsize }));
+}
+
+export function pickTip(blocks) {
+  if (!Array.isArray(blocks) || blocks.length === 0) return null;
+  return blocks.reduce((a, b) => (b.height > a.height ? b : a));
+}
+
+// --- connessione (solo browser; non importata dai test) ---
+
+export class MempoolFeed extends EventTarget {
+  constructor(url = WS_URL) {
+    super();
+    this.url = url;
+    this.delay = 5000;
+    this.ws = null;
+    this.closed = false;
+  }
+
+  connect() {
+    this.closed = false;
+    const ws = (this.ws = new WebSocket(this.url));
+    ws.onopen = () => {
+      this.delay = 5000;
+      ws.send(JSON.stringify({ action: 'init' }));
+      // stessa lista della sonda del 19/07: con questa il server spinge anche `transactions`
+      ws.send(JSON.stringify({ action: 'want', data: ['blocks', 'stats', 'mempool-blocks', 'live-2h-chart'] }));
+      this._emit('status', { state: 'up' });
+    };
+    ws.onmessage = (ev) => {
+      let m;
+      try { m = JSON.parse(ev.data); } catch { return; }
+      this._route(m);
+    };
+    ws.onclose = () => { if (!this.closed) this._retry(); };
+    ws.onerror = () => ws.close();
+  }
+
+  disconnect() { this.closed = true; this.ws?.close(); }
+
+  _retry() {
+    this._emit('status', { state: 'down' });
+    setTimeout(() => { if (!this.closed) this.connect(); }, this.delay);
+    this.delay = Math.min(60_000, this.delay * 2);
+  }
+
+  _route(m) {
+    if (m.blocks) {
+      const tip = pickTip(m.blocks);
+      if (tip) this._emit('init', { tipTimestampMs: tip.timestamp * 1000, height: tip.height });
+    }
+    if (m.block) this._emit('block', normalizeBlock(m.block));
+    if (m['mempool-blocks']) {
+      const p = normalizeProjected(m['mempool-blocks']);
+      if (p) this._emit('projected', p);
+    }
+    if (m.transactions) for (const tx of extractTx(m.transactions)) this._emit('tx', tx);
+    if (m.mempoolInfo) {
+      this._emit('stats', { pending: m.mempoolInfo.size ?? 0, vps: m.vBytesPerSecond ?? 0 });
+    }
+    // m.conversions (prezzi) viene ignorato di proposito: vietato dai vincoli editoriali
+  }
+
+  _emit(type, detail) { this.dispatchEvent(new CustomEvent(type, { detail })); }
+}
