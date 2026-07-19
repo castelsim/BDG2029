@@ -61,7 +61,7 @@ export class Scene {
       born: performance.now(),
       state: 'arriving', // arriving | waiting | selected | evicted | confirmed
       ang: Math.random() * TAU,
-      angSpeed: (0.05 + t * 0.12) * (Math.random() < 0.5 ? 1 : -1), // rad/s
+      angSpeed: 0.05 + t * 0.12, // rad/s — tutte nello stesso verso della galassia
       orbit: this.R * (1.12 + (1 - t) * 0.6) * (0.94 + Math.random() * 0.12),
       inner: 0,
       r: this.R * 2.4,
@@ -96,14 +96,18 @@ export class Scene {
     let queueTotal = 0;
     for (let i = 1; i < nBands; i++) queueTotal += bands[i].nTx;
     if (queueTotal === 0) return;
+    // la fila copre TUTTO lo schermo: dal bordo dell'anello fino agli angoli
+    const rIn = this.R * 1.15;
+    const rOut = Math.hypot(this.cx, this.cy) * 1.02;
+    const span = rOut - rIn;
     const dots = [];
     for (let i = 1; i < nBands; i++) {
       const b = bands[i];
       const rand = mulberry32(1000 + i); // seed fisso: il campione non «salta» tra un rebuild e l'altro
       const n = Math.round((b.nTx / queueTotal) * N);
       const qi = (i - 1) / (nBands - 1);
-      const rBase = this.R * (1.18 + qi * 1.15);
-      const thick = this.R * (1.15 / (nBands - 1)) * 1.6;
+      const rBase = rIn + qi * span;
+      const thick = (span / (nBands - 1)) * 1.6;
       const depth = (i - 1) / (nBands - 2 || 1); // 0 = subito dopo il prossimo blocco · 1 = fondo
       for (let j = 0; j < n; j++) {
         const fee = b.feeMin + (b.feeMax - b.feeMin) * rand() * rand(); // il grosso vicino al minimo
@@ -111,13 +115,13 @@ export class Scene {
         dots.push({
           r,
           ang: rand() * TAU,
-          // rotazione differenziale da galassia: dentro più veloce, il fondo quasi fermo
-          w: 0.014 * Math.pow(this.R / r, 1.5) * (0.85 + rand() * 0.3),
+          // stessa legge differenziale delle particelle vive: un sistema solo
+          w: 0.022 * Math.pow(this.R / r, 1.5) * (0.85 + rand() * 0.3),
           color: particleColor(feeTier(fee)),
-          s: rand() < 0.8 ? 1 : 2,
+          s: Math.min(2.6, 0.8 + particleRadius(b.vsizePerTx * (0.5 + rand())) * 0.35 + rand() * 0.6),
           ph: rand() * TAU,
           twf: 0.25 + (1 - depth) * 0.9 + rand() * 0.2, // le dormienti scintillano piano
-          a: 0.28 + (1 - depth) * 0.15,
+          a: 0.3 + (1 - depth) * 0.22, // continuità di luminosità con le vive
           band: i,
           fade: 0,
         });
@@ -215,7 +219,8 @@ export class Scene {
         if (Math.abs(p.r - p.orbit) < this.R * 0.06) p.state = 'waiting';
         break;
       case 'waiting':
-        p.ang += p.angSpeed * (0.4 + p.t) * dt / 1000;
+        // stessa legge di rotazione differenziale della galassia: un sistema solo
+        p.ang += 0.022 * Math.pow(this.R / Math.max(p.r, 1), 1.5) * (0.9 + p.t) * dt / 1000;
         break;
       case 'selected':
         target = p.inner;
@@ -280,14 +285,15 @@ export class Scene {
         d.ang += (d.w * dt) / 1000;
         if (d.fade < 1) d.fade = Math.min(1, d.fade + dt * 0.0005);
         const tw = 0.55 + 0.45 * Math.sin(d.ph + now * 0.001 * d.twf);
+        const rr = d.r + 2 * Math.sin(d.ph * 1.7 + now * 0.0004); // micro-respiro radiale
         let a = d.a * tw * d.fade * crowdDim;
         if (waveR > 0) {
-          const dist = Math.abs(d.r - waveR);
+          const dist = Math.abs(rr - waveR);
           if (dist < 70) a = Math.min(1, a + ((1 - dist / 70) * 0.8 + 0.1) * waveGlow);
         }
         ctx.globalAlpha = a;
         ctx.fillStyle = d.color;
-        ctx.fillRect(this.cx + Math.cos(d.ang) * d.r, this.cy + Math.sin(d.ang) * d.r, d.s, d.s);
+        ctx.fillRect(this.cx + Math.cos(d.ang) * rr, this.cy + Math.sin(d.ang) * rr, d.s, d.s);
       }
       ctx.globalAlpha = 1;
     }
