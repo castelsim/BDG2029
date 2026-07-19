@@ -17,15 +17,14 @@ export class GranularEngine {
     this.silT1 = 0;
     this.params = {
       master: 0.85,
-      glass: 0.3,        // 0 = solo tono puro (il suono «di prima») · 1 = solo vetro/rumore
-      grainQ: 16,        // strettezza della risonanza dello strato vetro
+      glass: 0,           // 0 = solo tono puro (il suono «di prima») · 1 = solo vetro/rumore
+      grainQ: 16,         // strettezza della risonanza dello strato vetro (se glass > 0)
       grainLevel: 1,
-      grainDurMin: 0.08, // s, transazioni leggere
-      grainDurMax: 0.26, // s, transazioni pesanti
       droneLevel: 1,
-      droneBeatMax: 1.6, // Hz di battimento del drone a tensione piena
-      macroLevel: 0.35,  // letto di rumore della mempool (basso: non deve mascherare i grani)
-      chordGlass: 0.35,  // quota rumore→tono nell'accordo
+      droneReactive: 0.25, // 0 = drone fisso com'era prima · 1 = pienamente guidato dai dati
+      droneBeatMax: 1.6,  // Hz di battimento del drone a tensione piena
+      macroLevel: 0.1,    // letto di rumore della mempool (quasi nullo: mai sopra i grani)
+      chordGlass: 0.2,    // quota d'aria nell'accordo
       chordLevel: 1,
       selectionLevel: 1,
       verbSeconds: 3.5,
@@ -146,19 +145,21 @@ export class GranularEngine {
     this.droneOscs[1].detune.setTargetAtTime(cents, ct, 8);
   }
 
-  // stato complessivo della mempool → livello macroscopico (variazioni lentissime)
+  // stato complessivo della mempool → livello macroscopico. La reattività del drone è
+  // dosata da droneReactive: a 0 il basso di riempimento è fisso, com'era prima.
   setMacro(part) {
     Object.assign(this.macro, part);
     if (!this.ctx) return;
     const ct = this.ctx.currentTime;
     const p = this.params;
+    const k = p.droneReactive;
     const dens = Math.min(1, Math.max(0, (this.macro.pending - 20_000) / 180_000)); // 20k…200k
     const feeT = Math.min(1, Math.max(0, Math.log((this.macro.medianFee + 0.001) / 0.1) / Math.log(2000)));
-    this.subGain.gain.setTargetAtTime((0.015 + 0.04 * dens) * p.droneLevel, ct, 12);
-    this.droneLp.frequency.setTargetAtTime(90 + 170 * feeT, ct, 15);
+    this.subGain.gain.setTargetAtTime((0.02 + 0.035 * dens * k) * p.droneLevel, ct, 12);
+    this.droneLp.frequency.setTargetAtTime(150 + (90 + 170 * feeT - 150) * k, ct, 15);
     this.macroLowG.gain.setTargetAtTime((0.006 + 0.02 * dens) * p.macroLevel, ct, 10);
     this.macroMidG.gain.setTargetAtTime((0.002 + 0.012 * this.macro.fillRatio) * p.macroLevel, ct, 10);
-    this.droneGain.gain.setTargetAtTime((0.05 + 0.03 * this.macro.fillRatio) * p.droneLevel, ct, 12);
+    this.droneGain.gain.setTargetAtTime((0.06 + 0.03 * this.macro.fillRatio * k) * p.droneLevel, ct, 12);
   }
 
   // GRANO: tono puro in primo piano (correlazione immediata particella→suono, il carattere
@@ -173,7 +174,8 @@ export class GranularEngine {
     this.hist[idx % 5]++;
     const midi = 57 + 12 * Math.floor(idx / 5) + SCALE[idx % 5];
     const freq = 440 * 2 ** ((midi - 69) / 12);
-    const dur = p.grainDurMin + (p.grainDurMax - p.grainDurMin) * weight;
+    // inviluppo «di prima»: le fee basse risuonano più a lungo, il peso aggiunge corpo
+    const dur = 0.1 + 0.18 * (1 - tier) + 0.08 * weight;
     const t = c.currentTime;
     const pan = c.createStereoPanner();
     pan.pan.value = panv ?? (Math.random() * 2 - 1) * 0.85;

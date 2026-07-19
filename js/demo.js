@@ -78,8 +78,8 @@ export class Scene {
       orbit: this.R * (1.12 + (1 - t) * 0.6) * (0.94 + Math.random() * 0.12),
       inner: 0,
       r: this.R * 2.4,
-      alpha: 0,
-      flash: 0,
+      alpha: 1,                  // nasce già visibile: l'occhio aggancia l'orecchio
+      flash: performance.now(),  // lampo di nascita, sincrono col suono del grano
       dimTil: 0,
     });
     return this.particles[this.particles.length - 1]; // per la correlazione audio (pan)
