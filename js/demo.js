@@ -427,14 +427,22 @@ export class Scene {
     if (inBang) {
       // lampo centrale (unica parte mantenuta anche con reduced motion, attenuata)
       const k = bangT / BEAT.BANG;
-      const soft = this.reduced ? 0.4 : 1;
-      const fr = this.R * (0.25 + 1.5 * (1 - Math.pow(1 - k, 2)));
+      const soft = this.reduced ? 0.35 : 1;
+      const fr = this.R * (0.3 + 2.4 * (1 - Math.pow(1 - k, 2)));
       const fg = ctx.createRadialGradient(this.cx, this.cy, 0, this.cx, this.cy, fr);
-      fg.addColorStop(0, `rgba(255, 255, 255, ${0.95 * soft * Math.pow(1 - k, 1.6)})`);
-      fg.addColorStop(0.35, `rgba(255, 178, 94, ${0.5 * soft * Math.pow(1 - k, 1.6)})`);
+      fg.addColorStop(0, `rgba(255, 255, 255, ${soft * Math.pow(1 - k, 1.2)})`);
+      fg.addColorStop(0.4, `rgba(255, 220, 170, ${0.7 * soft * Math.pow(1 - k, 1.4)})`);
       fg.addColorStop(1, 'rgba(255, 178, 94, 0)');
       ctx.fillStyle = fg;
       ctx.fillRect(0, 0, this.w, this.h);
+      // ACCECAMENTO: lavaggio bianco a tutto schermo, decade in fretta
+      if (!this.reduced) {
+        const wash = 0.95 * Math.pow(1 - k, 3);
+        if (wash > 0.01) {
+          ctx.fillStyle = `rgba(255, 252, 246, ${wash})`;
+          ctx.fillRect(0, 0, this.w, this.h);
+        }
+      }
     }
 
     // anello base
@@ -468,11 +476,11 @@ export class Scene {
     const pulse = (1 + amp * breath) * jitter;
 
     if (arc > 0.003) {
-      ctx.lineWidth = (flash ? 6 : 3 + (holding ? 1.2 * breathT * (0.5 + 0.5 * breath) : 0)) * pulse;
+      ctx.lineWidth = (flash ? 9 : 3 + (holding ? 1.2 * breathT * (0.5 + 0.5 * breath) : 0)) * pulse;
       ctx.strokeStyle = flash ? '#ffffff' : RING;
-      ctx.shadowColor = RING;
+      ctx.shadowColor = flash ? '#ffffff' : RING;
       // a cerchio pieno la luce si gonfia col respiro
-      ctx.shadowBlur = flash ? 45 : 16 + (holding ? (12 + 22 * breathT) * (0.5 + 0.5 * breath) : 0);
+      ctx.shadowBlur = flash ? 80 : 16 + (holding ? (12 + 22 * breathT) * (0.5 + 0.5 * breath) : 0);
       ctx.globalAlpha = quiet ? 0.15 : 0.88 + (holding ? 0.12 * (0.5 + 0.5 * breath) : 0) * 0.9;
       ctx.beginPath();
       ctx.arc(this.cx, this.cy, this.R, -TAU / 4, -TAU / 4 + TAU * Math.min(1, arc));
