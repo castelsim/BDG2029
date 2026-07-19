@@ -28,11 +28,11 @@ test('particleColor: stop della scala termica ghiaccio→fuoco', () => {
   assert.equal(particleColor(1), 'rgb(255, 64, 40)');
 });
 
-test('ringProgress: 0 all\'inizio, 0.45 a 5 min, tetto 0.9 da 10 min in poi', () => {
+test('ringProgress: 0 all\'inizio, metà a 5 min, giro completo da 10 min in poi', () => {
   assert.equal(ringProgress(0), 0);
-  assert.equal(ringProgress(300_000), 0.45);
-  assert.equal(ringProgress(600_000), 0.9);
-  assert.equal(ringProgress(1_800_000), 0.9);
+  assert.equal(ringProgress(300_000), 0.5);
+  assert.equal(ringProgress(600_000), 1);
+  assert.equal(ringProgress(1_800_000), 1);
   assert.equal(ringProgress(-5), 0);
 });
 

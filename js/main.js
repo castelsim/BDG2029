@@ -137,5 +137,15 @@ function frame(now) {
 requestAnimationFrame(frame);
 addEventListener('resize', () => scene.resize());
 
+// modalità prova (?prova=1): il tasto B scatena il ciclo del blocco, per regia e verifica
+if (new URLSearchParams(location.search).has('prova')) {
+  addEventListener('keydown', (e) => {
+    if (e.key === 'b' || e.key === 'B') {
+      scene.triggerBeat();
+      audio.chord();
+    }
+  });
+}
+
 // hook di debug per le verifiche manuali
 window.__bdg = { scene, audio, sim, live };

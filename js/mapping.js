@@ -52,9 +52,10 @@ export function lastBeatLabel(minutes) {
   return `ultimo battito: ${minutes} minuti fa`;
 }
 
-// avanzamento dell'anello-timer: 90% in 10 minuti, poi si ferma (respiro gestito dalla scena)
+// avanzamento dell'anello-timer: giro completo in 10 minuti (il tempo medio tra due
+// blocchi); a cerchio pieno il respiro affannoso è gestito dalla scena
 export function ringProgress(elapsedMs) {
-  return 0.9 * (Math.min(600_000, Math.max(0, elapsedMs)) / 600_000);
+  return Math.min(600_000, Math.max(0, elapsedMs)) / 600_000;
 }
 
 // alone della particella dal valore trasferito (sats), scala log in 0.12..0.85

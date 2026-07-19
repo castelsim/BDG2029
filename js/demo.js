@@ -22,6 +22,16 @@ export class Scene {
     this.cycleStart = performance.now(); // reset a ogni blocco reale
     this.beat = null;     // {t0} durante l'animazione del battito
     this.dpr = Math.min(2, globalThis.devicePixelRatio || 1);
+    // correnti interne della galassia: 12 campi lenti condivisi per settore angolare
+    // (addensamenti migranti, microflussi radiali, variazioni di luce — periodi 2–6 min)
+    this.currents = Array.from({ length: 12 }, (_, j) => ({
+      w1: 0.000028 + (j % 4) * 0.000012 + Math.random() * 0.00002,
+      p1: Math.random() * TAU,
+      w2: 0.00002 + Math.random() * 0.000024,
+      p2: Math.random() * TAU,
+      w3: 0.000014 + Math.random() * 0.000019,
+      p3: Math.random() * TAU,
+    }));
     this.resize();
   }
 
@@ -66,6 +76,8 @@ export class Scene {
       inner: 0,
       r: this.R * 2.4,
       alpha: 0,
+      flash: 0,
+      dimTil: 0,
     });
   }
 
@@ -112,9 +124,10 @@ export class Scene {
       for (let j = 0; j < n; j++) {
         const fee = b.feeMin + (b.feeMax - b.feeMin) * rand() * rand(); // il grosso vicino al minimo
         const r = rBase + ((rand() + rand()) / 2) * thick;
+        const ang = rand() * TAU;
         dots.push({
           r,
-          ang: rand() * TAU,
+          ang,
           // stessa legge differenziale delle particelle vive: un sistema solo
           w: 0.022 * Math.pow(this.R / r, 1.5) * (0.85 + rand() * 0.3),
           color: particleColor(feeTier(fee)),
@@ -122,6 +135,8 @@ export class Scene {
           ph: rand() * TAU,
           twf: 0.25 + (1 - depth) * 0.9 + rand() * 0.2, // le dormienti scintillano piano
           a: 0.3 + (1 - depth) * 0.22, // continuità di luminosità con le vive
+          cur: Math.floor((ang / TAU) * 12) % 12, // corrente del proprio settore
+          depth,
           band: i,
           fade: 0,
         });
@@ -141,11 +156,13 @@ export class Scene {
   _promote(p) {
     p.state = 'selected';
     p.inner = this.R * (0.18 + Math.random() * 0.62);
+    p.flash = performance.now(); // impulso di favore: si illumina ed entra decisa
   }
 
   _evict(p) {
     p.state = 'evicted';
     p.evictedAt = performance.now();
+    p.dimTil = performance.now() + 10_000; // perde energia: torna in coda spenta
   }
 
   // la selezione non è definitiva: promozioni ed espulsioni a ogni aggiornamento di soglia
@@ -216,15 +233,20 @@ export class Scene {
     switch (p.state) {
       case 'arriving':
         ease = 0.0014;
+        // gravità: l'ingresso curva a spirale verso il centro, più forte da vicino
+        p.ang += 0.09 * (this.R / Math.max(p.r, 1)) * dt / 1000;
         if (Math.abs(p.r - p.orbit) < this.R * 0.06) p.state = 'waiting';
         break;
       case 'waiting':
-        // stessa legge di rotazione differenziale della galassia: un sistema solo
+        // stessa legge di rotazione differenziale della galassia: un sistema solo;
+        // compressione verso il nucleo con la fee e con la tensione dell'attesa
+        target = p.orbit * (1 - 0.04 * p.t - 0.03 * this.tension);
         p.ang += 0.022 * Math.pow(this.R / Math.max(p.r, 1), 1.5) * (0.9 + p.t) * dt / 1000;
         break;
       case 'selected':
         target = p.inner;
-        ease = 0.002;
+        // appena promossa accelera decisa verso il blocco, poi si assesta
+        ease = p.flash && now - p.flash < 700 ? 0.0045 : 0.002;
         p.ang += p.angSpeed * 0.35 * dt / 1000;
         break;
       case 'evicted': {
@@ -281,19 +303,28 @@ export class Scene {
     // al passaggio dell'onda d'urto, la fila si illumina
     if (this.crowd) {
       const crowdDim = quiet ? 0.25 : 1;
+      // campi lenti delle correnti, calcolati una volta per frame
+      const cf = this.currents.map((c) => ({
+        lum: 0.78 + 0.22 * Math.sin(now * c.w1 + c.p1),
+        rad: 7 * Math.sin(now * c.w2 + c.p2),
+        angO: 0.02 * Math.sin(now * c.w3 + c.p3),
+      }));
       for (const d of this.crowd) {
         d.ang += (d.w * dt) / 1000;
         if (d.fade < 1) d.fade = Math.min(1, d.fade + dt * 0.0005);
+        const f = cf[d.cur];
+        const agit = 0.35 + 0.65 * (1 - d.depth); // interno agitato, fondo quasi immobile
         const tw = 0.55 + 0.45 * Math.sin(d.ph + now * 0.001 * d.twf);
-        const rr = d.r + 2 * Math.sin(d.ph * 1.7 + now * 0.0004); // micro-respiro radiale
-        let a = d.a * tw * d.fade * crowdDim;
+        const rr = d.r + 2 * Math.sin(d.ph * 1.7 + now * 0.0004) + f.rad * agit;
+        const aa = d.ang + f.angO * agit;
+        let a = d.a * tw * d.fade * crowdDim * (1 - agit * (1 - f.lum));
         if (waveR > 0) {
           const dist = Math.abs(rr - waveR);
           if (dist < 70) a = Math.min(1, a + ((1 - dist / 70) * 0.8 + 0.1) * waveGlow);
         }
         ctx.globalAlpha = a;
         ctx.fillStyle = d.color;
-        ctx.fillRect(this.cx + Math.cos(d.ang) * rr, this.cy + Math.sin(d.ang) * rr, d.s, d.s);
+        ctx.fillRect(this.cx + Math.cos(aa) * rr, this.cy + Math.sin(aa) * rr, d.s, d.s);
       }
       ctx.globalAlpha = 1;
     }
@@ -310,6 +341,12 @@ export class Scene {
         const dist = Math.abs(p.r - waveR);
         if (dist < 70) a = Math.min(1, a + (1 - dist / 70) * 0.7 * waveGlow);
       }
+      // selezione leggibile: impulso di favore alla promozione, energia persa all'espulsione
+      if (p.flash) {
+        const ft = now - p.flash;
+        if (ft < 600) a = Math.min(1, a + 0.5 * (1 - ft / 600));
+      }
+      if (p.dimTil > now) a *= 0.55 + 0.45 * (1 - (p.dimTil - now) / 10_000);
 
       // scia-cometa: lunghezza e luminosità = valore trasferito (scala log via halo);
       // appare solo nei movimenti veri (ingresso, espulsione, ingresso nel blocco),
@@ -417,27 +454,37 @@ export class Scene {
     } else if (quiet) {
       arc = 0;
     }
-    const holding = arc >= 0.9 && beatT < 0;
-    const amp = holding ? 0.05 + 0.07 * this.tension : 0.03;
-    const period = 12000 - 6000 * this.tension;
-    const pulse = 1 + amp * Math.sin((now / period) * TAU);
+    // fasi dell'anello: quieto → presente (75–100%) → PIENO: respiro sempre più affannoso
+    const holding = arc >= 1 && beatT < 0;
+    const adv = Math.max(0, Math.min(1, (arc - 0.75) / 0.25)); // fase avanzata pre-completamento
+    const breathT = holding ? this.tension : 0;
+    const amp = holding ? 0.06 + 0.18 * breathT : 0.03 + 0.03 * adv;
+    const period = holding ? Math.max(2200, 9000 - 6500 * breathT) : 12000 - 5000 * adv;
+    const breath = Math.sin((now / period) * TAU);
+    // micro-sfarfallio controllato della fase avanzata (mai con reduced motion)
+    const jitter = adv > 0 && !this.reduced
+      ? 1 + 0.08 * adv * Math.sin(now * 0.046) * Math.sin(now * 0.0071)
+      : 1;
+    const pulse = (1 + amp * breath) * jitter;
 
     if (arc > 0.003) {
-      ctx.lineWidth = (flash ? 6 : 3) * pulse;
+      ctx.lineWidth = (flash ? 6 : 3 + (holding ? 1.2 * breathT * (0.5 + 0.5 * breath) : 0)) * pulse;
       ctx.strokeStyle = flash ? '#ffffff' : RING;
       ctx.shadowColor = RING;
-      ctx.shadowBlur = flash ? 45 : 16;
-      ctx.globalAlpha = quiet ? 0.15 : 0.9;
+      // a cerchio pieno la luce si gonfia col respiro
+      ctx.shadowBlur = flash ? 45 : 16 + (holding ? (12 + 22 * breathT) * (0.5 + 0.5 * breath) : 0);
+      ctx.globalAlpha = quiet ? 0.15 : 0.88 + (holding ? 0.12 * (0.5 + 0.5 * breath) : 0) * 0.9;
       ctx.beginPath();
       ctx.arc(this.cx, this.cy, this.R, -TAU / 4, -TAU / 4 + TAU * Math.min(1, arc));
       ctx.stroke();
-      // punta luminosa dell'arco
-      if (!flash && !quiet) {
-        const tip = -TAU / 4 + TAU * Math.min(1, arc);
+      // punta luminosa dell'arco (sparisce a cerchio completo; instabile in fase avanzata)
+      if (!flash && !quiet && arc < 1) {
+        const tip = -TAU / 4 + TAU * arc;
+        const tipR = this.R + (adv > 0 && !this.reduced ? 1.5 * adv * Math.sin(now * 0.031) : 0);
         ctx.globalAlpha = 0.9;
         ctx.fillStyle = '#ffffff';
         ctx.beginPath();
-        ctx.arc(this.cx + Math.cos(tip) * this.R, this.cy + Math.sin(tip) * this.R, 2.4 * pulse, 0, TAU);
+        ctx.arc(this.cx + Math.cos(tip) * tipR, this.cy + Math.sin(tip) * tipR, 2.4 * pulse, 0, TAU);
         ctx.fill();
       }
       ctx.shadowBlur = 0;
