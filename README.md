@@ -19,6 +19,6 @@ Il dominio serve le sottopagine come cartelle del repo `castelsim/simonecastella
 Dopo ogni modifica qui, sincronizzare la copia pubblicata:
 
 ```bash
-cp -R index.html style.css js assets ../simonecastellan/BDG2029/
+cp -R index.html progetto.html style.css js assets ../simonecastellan/BDG2029/
 cd ../simonecastellan && git add BDG2029 && git commit -m "Aggiorna BDG2029" && git push
 ```
