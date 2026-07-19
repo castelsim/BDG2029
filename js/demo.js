@@ -7,8 +7,9 @@ import { mulberry32 } from './fallback.js';
 
 const TAU = Math.PI * 2;
 // timeline del battito v3 (decisa col direttore artistico): niente frame nero —
-// collasso con sospensione finale → lampo accecante → silenzio vero → rinascita scaglionata
-const BEAT = { FALL: 1500, SUSPEND: 180, BANG: 700, QUIET: 3000, REBIRTH: 2000 }; // ms
+// collasso con sospensione finale → lampo accecante → risoluzione (l'accordo) →
+// silenzio vero → rinascita scaglionata. Totale ~10,4 s.
+const BEAT = { FALL: 1500, SUSPEND: 180, BANG: 700, RESOLVE: 3000, QUIET: 3000, REBIRTH: 2000 }; // ms
 const RING = 'rgb(255, 178, 94)'; // l'anello resta ambra
 
 export class Scene {
@@ -171,20 +172,22 @@ export class Scene {
 
   // la selezione non è definitiva: promozioni ed espulsioni a ogni aggiornamento di soglia
   _reconcile() {
+    let nProm = 0;
+    let nEvict = 0;
     for (const p of this.particles) {
-      if (p.state === 'selected' && p.t < this.threshold) this._evict(p);
+      if (p.state === 'selected' && p.t < this.threshold) { this._evict(p); nEvict++; }
     }
     let free = this.capSel - this._selectedCount();
     if (free > 0) {
       const candidates = this.particles
         .filter((p) => p.state === 'waiting' && p.t >= this.threshold)
         .sort((a, b) => b.t - a.t);
-      for (const p of candidates.slice(0, free)) this._promote(p);
+      for (const p of candidates.slice(0, free)) { this._promote(p); nProm++; }
     } else if (free < 0) {
       const sel = this.particles
         .filter((p) => p.state === 'selected')
         .sort((a, b) => a.t - b.t);
-      for (const p of sel.slice(0, -free)) this._evict(p);
+      for (const p of sel.slice(0, -free)) { this._evict(p); nEvict++; }
     } else {
       // capienza piena: chi offre di più scalza chi offre meno (sostituzione
       // fino all'ultimo istante; margine anti-sfarfallio tra fee quasi uguali)
@@ -201,10 +204,13 @@ export class Scene {
           if (ci >= cand.length || cand[ci].t <= worst.t + 0.02) break;
           this._evict(worst);
           this._promote(cand[ci]);
+          nEvict++;
+          nProm++;
           ci++;
         }
       }
     }
+    if (nProm || nEvict) this.onSelection?.(nProm, nEvict);
   }
 
   // blocco reale trovato: le selezionate vengono confermate e assorbite, il ciclo riparte
@@ -300,13 +306,15 @@ export class Scene {
       const e1 = BEAT.FALL;
       const e2 = e1 + BEAT.SUSPEND;
       const e3 = e2 + BEAT.BANG;
-      const e4 = e3 + BEAT.QUIET;
-      const e5 = e4 + BEAT.REBIRTH;
+      const e4 = e3 + BEAT.RESOLVE;
+      const e5 = e4 + BEAT.QUIET;
+      const e6 = e5 + BEAT.REBIRTH;
       if (beatT < e1) { phase = 'fall'; phT = beatT / BEAT.FALL; }
       else if (beatT < e2) { phase = 'suspend'; phT = (beatT - e1) / BEAT.SUSPEND; }
       else if (beatT < e3) { phase = 'bang'; phT = (beatT - e2) / BEAT.BANG; }
-      else if (beatT < e4) { phase = 'quiet'; phT = (beatT - e3) / BEAT.QUIET; }
-      else if (beatT < e5) { phase = 'rebirth'; phT = (beatT - e4) / BEAT.REBIRTH; }
+      else if (beatT < e4) { phase = 'resolve'; phT = (beatT - e3) / BEAT.RESOLVE; }
+      else if (beatT < e5) { phase = 'quiet'; phT = (beatT - e4) / BEAT.QUIET; }
+      else if (beatT < e6) { phase = 'rebirth'; phT = (beatT - e5) / BEAT.REBIRTH; }
       else this.beat = null;
     }
     this._phase = phase;
@@ -328,6 +336,12 @@ export class Scene {
       crowdDim = 0.3; liveDim = 0.6; slowmo = 0.06;
     } else if (phase === 'bang') {
       crowdDim = 0.55; liveDim = 0.8; slowmo = 0.5;
+    } else if (phase === 'resolve') {
+      // mentre l'accordo si risolve, la scena si posa lentamente verso il silenzio
+      crowdDim = 0.55 - 0.43 * phT;
+      liveDim = 0.8 - 0.6 * phT;
+      ringDim = 0;
+      slowmo = 0.5 - 0.35 * phT;
     } else if (phase === 'quiet') {
       crowdDim = 0.12; liveDim = 0.2; ringDim = 0; slowmo = 0.15;
     } else if (phase === 'rebirth') {

@@ -15,6 +15,8 @@ const mobile = matchMedia('(max-width: 700px)').matches;
 const reducedMotion = matchMedia('(prefers-reduced-motion: reduce)').matches;
 const scene = new Scene(canvas, { maxParticles: mobile ? 350 : 900, reducedMotion });
 const audio = new GranularEngine();
+// coerenza audio↔visivo: la selezione (promozioni/espulsioni) suona in forma aggregata
+scene.onSelection = (nProm, nEvict) => audio.selection(nProm, nEvict);
 
 let lastBlockMs = null;
 let lastLiveMsg = 0;
@@ -47,24 +49,26 @@ function wire(src) {
     // sgrana i lotti nel tempo, così l'arrivo appare continuo
     setTimeout(() => {
       scene.addTx(e.detail);
-      audio.grain(feeTier(e.detail.feeRate));
+      audio.grain(feeTier(e.detail.feeRate), Math.min(1, (e.detail.vsize ?? 140) / 1200));
     }, Math.random() * 1100);
   });
   src.addEventListener('projected', (e) => {
     if (!feedActive(src)) return;
     scene.setBlock(e.detail.feeFloor, e.detail.fillRatio);
     if (e.detail.bands) scene.setCrowd(e.detail.bands);
+    audio.setMacro({ medianFee: e.detail.medianFee, fillRatio: e.detail.fillRatio });
   });
   src.addEventListener('stats', (e) => {
     if (!feedActive(src)) return;
     const conto = document.getElementById('conto-attesa');
     if (conto) conto.textContent = e.detail.pending.toLocaleString('it-IT');
+    audio.setMacro({ pending: e.detail.pending });
   });
   src.addEventListener('block', (e) => {
     if (!feedActive(src)) return;
     lastBlockMs = e.detail.timestampMs;
     scene.triggerBeat();
-    audio.chord();
+    audio.blockCycle();
   });
   src.addEventListener('init', (e) => {
     if (src === live) {
@@ -142,7 +146,7 @@ if (new URLSearchParams(location.search).has('prova')) {
   addEventListener('keydown', (e) => {
     if (e.key === 'b' || e.key === 'B') {
       scene.triggerBeat();
-      audio.chord();
+      audio.blockCycle();
     }
   });
 }

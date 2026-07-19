@@ -1,5 +1,14 @@
-// js/feed.js — WebSocket mempool.space: normalizzazione messaggi + connessione
-export const WS_URL = 'wss://mempool.space/api/v1/ws';
+// js/feed.js — WebSocket mempool.space: normalizzazione messaggi + connessione.
+// Più fonti compatibili (stesso protocollo, verificate il 20/07/2026): in caso di
+// guasto si ruota alla successiva — failover a priorità, non media (mediare mempool
+// leggermente desincronizzate creerebbe artefatti).
+export const WS_URLS = [
+  'wss://mempool.space/api/v1/ws',
+  'wss://mempool.emzy.de/api/v1/ws',
+  'wss://mempool.ninja/api/v1/ws',
+  'wss://mempool.bitcoin-21.org/api/v1/ws',
+];
+export const WS_URL = WS_URLS[0];
 
 // --- funzioni pure (testate in node) ---
 
@@ -51,9 +60,10 @@ export function pickTip(blocks) {
 // --- connessione (solo browser; non importata dai test) ---
 
 export class MempoolFeed extends EventTarget {
-  constructor(url = WS_URL) {
+  constructor(urls = WS_URLS) {
     super();
-    this.url = url;
+    this.urls = Array.isArray(urls) ? urls : [urls];
+    this.uIdx = 0;
     this.delay = 5000;
     this.ws = null;
     this.closed = false;
@@ -61,7 +71,7 @@ export class MempoolFeed extends EventTarget {
 
   connect() {
     this.closed = false;
-    const ws = (this.ws = new WebSocket(this.url));
+    const ws = (this.ws = new WebSocket(this.urls[this.uIdx]));
     ws.onopen = () => {
       this.delay = 5000;
       ws.send(JSON.stringify({ action: 'init' }));
@@ -82,6 +92,7 @@ export class MempoolFeed extends EventTarget {
 
   _retry() {
     this._emit('status', { state: 'down' });
+    this.uIdx = (this.uIdx + 1) % this.urls.length; // fonte successiva
     setTimeout(() => { if (!this.closed) this.connect(); }, this.delay);
     this.delay = Math.min(60_000, this.delay * 2);
   }
