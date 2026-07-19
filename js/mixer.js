@@ -37,6 +37,7 @@ export function buildMixer(audio) {
         font-family: inherit; font-size: 10px; padding: 6px; }
     </style>
     <h3>Regia audio</h3>
+    <button id="mixer-audio">🔊 attiva audio</button>
     <div id="mixer-sliders"></div>
     <button id="mixer-beat">B · battito di prova</button>
     <button id="mixer-copy" class="ghost">Copia valori</button>
@@ -68,6 +69,13 @@ export function buildMixer(audio) {
     wrap.appendChild(lab);
     wrap.appendChild(inp);
   }
+  const audioBtn = box.querySelector('#mixer-audio');
+  audioBtn.onclick = () => {
+    document.getElementById('ascolta')?.click();
+    setTimeout(() => {
+      audioBtn.textContent = audio.active ? '🔇 disattiva audio' : '🔊 attiva audio';
+    }, 150);
+  };
   box.querySelector('#mixer-beat').onclick = () => {
     window.__bdg?.scene?.triggerBeat();
     audio.blockCycle();
