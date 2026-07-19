@@ -52,7 +52,13 @@ export class SimFeed extends EventTarget {
     this.timers = [];
   }
 
-  _after(ms, fn) { this.timers.push(setTimeout(fn, ms)); }
+  _after(ms, fn) {
+    const id = setTimeout(() => {
+      this.timers = this.timers.filter((t) => t !== id);
+      fn();
+    }, ms);
+    this.timers.push(id);
+  }
 
   _txLoop() {
     if (!this.running) return;

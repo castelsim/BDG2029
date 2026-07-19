@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { mulberry32, nextBlockDelayMs, simTx } from '../js/fallback.js';
+import { mulberry32, nextBlockDelayMs, simTx, SimFeed } from '../js/fallback.js';
 
 test('mulberry32: deterministico a parità di seed, in [0,1)', () => {
   const a = mulberry32(42), b = mulberry32(42);
@@ -40,4 +40,18 @@ test('simTx: la maggior parte delle fee è bassa (coda alta rara)', () => {
   const rand = mulberry32(13);
   const rates = Array.from({ length: 1000 }, () => simTx(rand).feeRate).sort((x, y) => x - y);
   assert.ok(rates[500] < 10, `mediana troppo alta: ${rates[500]}`);
+});
+
+test('SimFeed: a start() emette subito tx/projected/stats con le shape di MempoolFeed', () => {
+  const f = new SimFeed(mulberry32(5));
+  const got = {};
+  for (const ev of ['tx', 'projected', 'block', 'stats']) {
+    f.addEventListener(ev, (e) => { got[ev] = e.detail; });
+  }
+  f.start();
+  f.stop();
+  assert.deepEqual(Object.keys(got.tx).sort(), ['feeRate', 'vsize']);
+  assert.deepEqual(Object.keys(got.projected).sort(), ['feeFloor', 'fillRatio', 'medianFee']);
+  assert.deepEqual(Object.keys(got.stats).sort(), ['pending', 'vps']);
+  assert.equal(f.timers.length, 0, 'stop() svuota i timer');
 });
