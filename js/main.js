@@ -88,7 +88,7 @@ setInterval(() => {
 live.connect();
 
 // hook di debug per le verifiche manuali (usato dai passi di test del piano)
-window.__bdg = { scene, audio, sim };
+window.__bdg = { scene, audio, sim, live };
 
 // etichetta «ultimo battito» + tensione
 setInterval(() => {
