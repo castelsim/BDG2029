@@ -6,7 +6,9 @@ import {
 import { mulberry32 } from './fallback.js';
 
 const TAU = Math.PI * 2;
-const BEAT = { BLACKOUT: 150, FALL: 1200, BANG: 900, QUIET: 3000 }; // ms
+// timeline del battito v3 (decisa col direttore artistico): niente frame nero —
+// collasso con sospensione finale → lampo accecante → silenzio vero → rinascita scaglionata
+const BEAT = { FALL: 1500, SUSPEND: 180, BANG: 700, QUIET: 3000, REBIRTH: 2000 }; // ms
 const RING = 'rgb(255, 178, 94)'; // l'anello resta ambra
 
 export class Scene {
@@ -93,8 +95,10 @@ export class Scene {
   setCrowd(bands) {
     if (!Array.isArray(bands) || bands.length === 0) return;
     this.bands = bands;
-    const now = performance.now();
-    if (!this._crowdAt || now - this._crowdAt > 60_000) this._buildCrowd();
+    // la fila si riorganizza solo quando un blocco la sfoltisce: ricostruzione al primo
+    // caricamento e dopo ogni blocco (triggerBeat azzera _crowdAt); il contatore in
+    // legenda resta comunque in tempo reale
+    if (!this._crowdAt) this._buildCrowd();
   }
 
   _buildCrowd() {
@@ -205,8 +209,9 @@ export class Scene {
 
   // blocco reale trovato: le selezionate vengono confermate e assorbite, il ciclo riparte
   triggerBeat() {
-    this.beat = { t0: performance.now() };
-    this.cycleStart = this.beat.t0;
+    const t0 = performance.now();
+    this.beat = { t0, arc0: ringProgress(t0 - this.cycleStart) };
+    this.cycleStart = t0;
     for (const p of this.particles) {
       if (p.state === 'selected') p.state = 'confirmed';
     }
@@ -257,11 +262,21 @@ export class Scene {
         if (since > 900) p.state = 'waiting';
         break;
       }
-      case 'confirmed':
-        target = 0;
-        ease = 0.006;
-        p.alpha -= dt * 0.0011;
+      case 'confirmed': {
+        const ph = this._phase;
+        if (ph === 'fall' || ph === 'suspend') {
+          // collasso fisico: accelera verso il nucleo e vi si comprime, restando visibile
+          target = this.R * 0.07;
+          ease = 0.002 + 0.009 * (ph === 'suspend' ? 1 : this._phaseT);
+        } else if (ph === 'bang') {
+          return true; // assorbita nel lampo: il blocco è chiuso
+        } else {
+          target = 0;
+          ease = 0.006;
+          p.alpha -= dt * 0.0011;
+        }
         break;
+      }
     }
     p.r += (target - p.r) * Math.min(1, dt * ease);
     return p.state === 'confirmed' && (p.alpha <= 0 || p.r < this.R * 0.03);
@@ -277,32 +292,64 @@ export class Scene {
     ctx.fillStyle = 'rgba(5, 5, 6, 0.4)';
     ctx.fillRect(0, 0, this.w, this.h);
 
-    if (beatT >= 0 && beatT < BEAT.BLACKOUT && !this.reduced) {
-      ctx.fillStyle = '#050506';
-      ctx.fillRect(0, 0, this.w, this.h);
-      return;
+    // fasi del battito v3: collasso → sospensione → lampo → silenzio → rinascita.
+    // Nessun frame nero: continuità organica tra le fasi.
+    let phase = null;
+    let phT = 0;
+    if (beatT >= 0) {
+      const e1 = BEAT.FALL;
+      const e2 = e1 + BEAT.SUSPEND;
+      const e3 = e2 + BEAT.BANG;
+      const e4 = e3 + BEAT.QUIET;
+      const e5 = e4 + BEAT.REBIRTH;
+      if (beatT < e1) { phase = 'fall'; phT = beatT / BEAT.FALL; }
+      else if (beatT < e2) { phase = 'suspend'; phT = (beatT - e1) / BEAT.SUSPEND; }
+      else if (beatT < e3) { phase = 'bang'; phT = (beatT - e2) / BEAT.BANG; }
+      else if (beatT < e4) { phase = 'quiet'; phT = (beatT - e3) / BEAT.QUIET; }
+      else if (beatT < e5) { phase = 'rebirth'; phT = (beatT - e4) / BEAT.REBIRTH; }
+      else this.beat = null;
     }
+    this._phase = phase;
+    this._phaseT = phT;
+    const inBang = phase === 'bang';
+    const quiet = phase === 'quiet';
 
-    // fasi del battito: blackout → collasso → BIG BANG → quiete
-    const bangStart = BEAT.BLACKOUT + BEAT.FALL;
-    const bangT = beatT - bangStart;
-    const inBang = bangT >= 0 && bangT < BEAT.BANG;
-    const quiet = beatT >= bangStart + BEAT.BANG;
-    const dim = quiet ? 0.35 : 1;
+    // luminosità per strati e tempo rallentato: l'evento sospende la scena, poi la rinascita
+    // è scaglionata (prima il fondo, poi le vive, infine l'anello)
+    let crowdDim = 1;
+    let liveDim = 1;
+    let ringDim = 1;
+    let slowmo = 1;
+    if (phase === 'fall') {
+      const k = Math.min(1, phT * 3);
+      crowdDim = 1 - 0.65 * k;
+      liveDim = 1 - 0.35 * k;
+    } else if (phase === 'suspend') {
+      crowdDim = 0.3; liveDim = 0.6; slowmo = 0.06;
+    } else if (phase === 'bang') {
+      crowdDim = 0.55; liveDim = 0.8; slowmo = 0.5;
+    } else if (phase === 'quiet') {
+      crowdDim = 0.12; liveDim = 0.2; ringDim = 0; slowmo = 0.15;
+    } else if (phase === 'rebirth') {
+      crowdDim = 0.12 + 0.88 * Math.min(1, phT * 1.8);
+      liveDim = 0.2 + 0.8 * Math.max(0, Math.min(1, phT * 2 - 0.7));
+      ringDim = Math.max(0, Math.min(1, phT * 2.5 - 1.4));
+      slowmo = 0.15 + 0.85 * phT;
+    }
+    const dtP = dt * slowmo;
+    const dim = liveDim;
 
-    // onda d'urto del big bang: raggio e intensità
+    // onda del lampo: raggio e intensità
     let waveR = -1;
     let waveGlow = 0;
     if (inBang) {
-      const k = bangT / BEAT.BANG;
-      waveR = (1 - Math.pow(1 - k, 3)) * Math.max(this.w, this.h) * 0.72;
-      waveGlow = Math.pow(1 - k, 1.4);
+      waveR = (1 - Math.pow(1 - phT, 3)) * Math.max(this.w, this.h) * 0.72;
+      waveGlow = Math.pow(1 - phT, 1.4);
     }
 
     // la galassia della fila: punti individuali in lenta orbita differenziale;
     // al passaggio dell'onda d'urto, la fila si illumina
     if (this.crowd) {
-      const crowdDim = quiet ? 0.25 : 1;
       // campi lenti delle correnti, calcolati una volta per frame
       const cf = this.currents.map((c) => ({
         lum: 0.78 + 0.22 * Math.sin(now * c.w1 + c.p1),
@@ -310,7 +357,7 @@ export class Scene {
         angO: 0.02 * Math.sin(now * c.w3 + c.p3),
       }));
       for (const d of this.crowd) {
-        d.ang += (d.w * dt) / 1000;
+        d.ang += (d.w * dtP) / 1000;
         if (d.fade < 1) d.fade = Math.min(1, d.fade + dt * 0.0005);
         const f = cf[d.cur];
         const agit = 0.35 + 0.65 * (1 - d.depth); // interno agitato, fondo quasi immobile
@@ -332,7 +379,7 @@ export class Scene {
     // particelle: scia (valore, solo in movimento) + nucleo (fee)
     for (let i = this.particles.length - 1; i >= 0; i--) {
       const p = this.particles[i];
-      if (this._updateParticle(p, now, dt)) { this.particles.splice(i, 1); continue; }
+      if (this._updateParticle(p, now, dtP)) { this.particles.splice(i, 1); continue; }
       const x = this.cx + Math.cos(p.ang) * p.r;
       const y = this.cy + Math.sin(p.ang) * p.r;
       const tw = 0.55 + 0.45 * Math.sin(p.born + now * 0.001 * (0.6 + p.t * 1.6));
@@ -381,24 +428,24 @@ export class Scene {
     }
     ctx.globalAlpha = 1;
 
-    // BIG BANG: lampo centrale, scintille di luce, onda d'urto. Energia, non transazioni:
-    // ciò che è entrato nel blocco resta assorbito per sempre.
+    // CRISTALLIZZAZIONE: pochi bagliori geometrici, un'onda pulita, il lampo accecante.
+    // Non una distruzione: la chiusura che si propaga nella rete.
     if (inBang && !this.reduced) {
       if (!this.beat.sparks) {
-        const nS = this.max >= 900 ? 90 : 40;
-        this.beat.sparks = Array.from({ length: nS }, () => ({
-          ang: Math.random() * TAU,
-          sp: (2.5 + Math.random() * 9) * (this.R / 240),
+        const nS = this.max >= 900 ? 24 : 12;
+        this.beat.sparks = Array.from({ length: nS }, (_, j) => ({
+          ang: (j / nS) * TAU + (Math.random() - 0.5) * 0.25, // quasi regolari: cristallo, non esplosione
+          sp: (4 + Math.random() * 5) * (this.R / 240),
           dist: this.R * 0.05,
-          w: Math.random() < 0.7 ? 1.2 : 2,
-          col: Math.random() < 0.55 ? '#ffffff' : RING,
+          w: 0.8 + Math.random() * 0.6,
+          col: Math.random() < 0.6 ? '#ffffff' : RING,
         }));
       }
       for (const sk of this.beat.sparks) {
         sk.dist += (sk.sp * dt) / 16.7;
         const sx = this.cx + Math.cos(sk.ang) * sk.dist;
         const sy = this.cy + Math.sin(sk.ang) * sk.dist;
-        const tail = Math.min(60, sk.sp * 7);
+        const tail = Math.min(36, sk.sp * 5);
         const bx = this.cx + Math.cos(sk.ang) * Math.max(0, sk.dist - tail);
         const by = this.cy + Math.sin(sk.ang) * Math.max(0, sk.dist - tail);
         const g = ctx.createLinearGradient(sx, sy, bx, by);
@@ -407,18 +454,18 @@ export class Scene {
         ctx.strokeStyle = g;
         ctx.lineWidth = sk.w;
         ctx.lineCap = 'round';
-        ctx.globalAlpha = waveGlow;
+        ctx.globalAlpha = 0.8 * waveGlow;
         ctx.beginPath();
         ctx.moveTo(sx, sy);
         ctx.lineTo(bx, by);
         ctx.stroke();
       }
       ctx.globalAlpha = 1;
-      // onda d'urto
+      // onda pulita: la nuova realtà condivisa si propaga
       ctx.strokeStyle = `rgba(255, 232, 200, ${0.75 * waveGlow})`;
-      ctx.lineWidth = 2 + 14 * waveGlow;
+      ctx.lineWidth = 2 + 12 * waveGlow;
       ctx.shadowColor = RING;
-      ctx.shadowBlur = 30 * waveGlow;
+      ctx.shadowBlur = 26 * waveGlow;
       ctx.beginPath();
       ctx.arc(this.cx, this.cy, waveR, 0, TAU);
       ctx.stroke();
@@ -426,18 +473,17 @@ export class Scene {
     }
     if (inBang) {
       // lampo centrale (unica parte mantenuta anche con reduced motion, attenuata)
-      const k = bangT / BEAT.BANG;
       const soft = this.reduced ? 0.35 : 1;
-      const fr = this.R * (0.3 + 2.4 * (1 - Math.pow(1 - k, 2)));
+      const fr = this.R * (0.3 + 2.4 * (1 - Math.pow(1 - phT, 2)));
       const fg = ctx.createRadialGradient(this.cx, this.cy, 0, this.cx, this.cy, fr);
-      fg.addColorStop(0, `rgba(255, 255, 255, ${soft * Math.pow(1 - k, 1.2)})`);
-      fg.addColorStop(0.4, `rgba(255, 220, 170, ${0.7 * soft * Math.pow(1 - k, 1.4)})`);
+      fg.addColorStop(0, `rgba(255, 255, 255, ${soft * Math.pow(1 - phT, 1.2)})`);
+      fg.addColorStop(0.4, `rgba(255, 220, 170, ${0.7 * soft * Math.pow(1 - phT, 1.4)})`);
       fg.addColorStop(1, 'rgba(255, 178, 94, 0)');
       ctx.fillStyle = fg;
       ctx.fillRect(0, 0, this.w, this.h);
       // ACCECAMENTO: lavaggio bianco a tutto schermo, decade in fretta
       if (!this.reduced) {
-        const wash = 0.95 * Math.pow(1 - k, 3);
+        const wash = 0.95 * Math.pow(1 - phT, 3);
         if (wash > 0.01) {
           ctx.fillStyle = `rgba(255, 252, 246, ${wash})`;
           ctx.fillRect(0, 0, this.w, this.h);
@@ -452,18 +498,21 @@ export class Scene {
     ctx.arc(this.cx, this.cy, this.R, 0, TAU);
     ctx.stroke();
 
-    // arco: timer narrativo (90% in 10 min + respiro), o animazione del battito
+    // arco: timer narrativo (360° in 10 min), o animazione del battito
     let arc = ringProgress(now - this.cycleStart);
     let flash = false;
-    if (beatT >= BEAT.BLACKOUT && beatT < BEAT.BLACKOUT + 300) {
-      arc = 1; flash = true;
-    } else if (beatT >= BEAT.BLACKOUT + 300 && beatT < BEAT.BLACKOUT + BEAT.FALL) {
-      arc = 1 - (beatT - BEAT.BLACKOUT - 300) / (BEAT.FALL - 300);
-    } else if (quiet) {
+    if (phase === 'fall') {
+      arc = (this.beat.arc0 ?? 1) * (1 - Math.min(1, beatT / 600)); // si svuota col collasso
+    } else if (phase === 'suspend') {
+      arc = 0;
+    } else if (phase === 'bang') {
+      if (phT < 0.45) { arc = 1; flash = true; } else arc = 0;
+    } else if (phase === 'quiet') {
       arc = 0;
     }
-    // fasi dell'anello: quieto → presente (75–100%) → PIENO: respiro sempre più affannoso
-    const holding = arc >= 1 && beatT < 0;
+    // fasi dell'anello: quieto → presente (75–100%) → PIENO: respiro sempre più affannoso,
+    // come un neon rotto, finché il blocco non arriva
+    const holding = arc >= 1 && phase === null;
     const adv = Math.max(0, Math.min(1, (arc - 0.75) / 0.25)); // fase avanzata pre-completamento
     const breathT = holding ? this.tension : 0;
     const amp = holding ? 0.06 + 0.18 * breathT : 0.03 + 0.03 * adv;
@@ -474,14 +523,23 @@ export class Scene {
       ? 1 + 0.08 * adv * Math.sin(now * 0.046) * Math.sin(now * 0.0071)
       : 1;
     const pulse = (1 + amp * breath) * jitter;
+    // neon rotto: a cerchio pieno il tubo perde colpi, sempre più spesso con la tensione
+    let neon = 1;
+    if (holding && !this.reduced) {
+      const n = Math.sin(now * 0.043) * Math.sin(now * 0.0117 + 1.7) * Math.sin(now * 0.0053 + 0.4);
+      const gate = 0.97 - 0.55 * breathT;
+      if (n > gate) neon = 0.3 + 0.5 * Math.random();       // il tubo si spegne a tratti
+      else if (n < -0.985) neon = 1.4;                       // guizzo di sovraccarico
+    }
 
     if (arc > 0.003) {
       ctx.lineWidth = (flash ? 9 : 3 + (holding ? 1.2 * breathT * (0.5 + 0.5 * breath) : 0)) * pulse;
       ctx.strokeStyle = flash ? '#ffffff' : RING;
       ctx.shadowColor = flash ? '#ffffff' : RING;
-      // a cerchio pieno la luce si gonfia col respiro
-      ctx.shadowBlur = flash ? 80 : 16 + (holding ? (12 + 22 * breathT) * (0.5 + 0.5 * breath) : 0);
-      ctx.globalAlpha = quiet ? 0.15 : 0.88 + (holding ? 0.12 * (0.5 + 0.5 * breath) : 0) * 0.9;
+      // a cerchio pieno la luce si gonfia col respiro (e il neon rotto la fa mancare)
+      ctx.shadowBlur = (flash ? 80 : 16 + (holding ? (12 + 22 * breathT) * (0.5 + 0.5 * breath) : 0)) * neon;
+      ctx.globalAlpha = Math.min(1, (0.88 + (holding ? 0.12 * (0.5 + 0.5 * breath) : 0)) * neon)
+        * (phase === 'rebirth' ? ringDim : 1);
       ctx.beginPath();
       ctx.arc(this.cx, this.cy, this.R, -TAU / 4, -TAU / 4 + TAU * Math.min(1, arc));
       ctx.stroke();
@@ -489,13 +547,23 @@ export class Scene {
       if (!flash && !quiet && arc < 1) {
         const tip = -TAU / 4 + TAU * arc;
         const tipR = this.R + (adv > 0 && !this.reduced ? 1.5 * adv * Math.sin(now * 0.031) : 0);
-        ctx.globalAlpha = 0.9;
+        ctx.globalAlpha = 0.9 * (phase === 'rebirth' ? ringDim : 1);
         ctx.fillStyle = '#ffffff';
         ctx.beginPath();
         ctx.arc(this.cx + Math.cos(tip) * tipR, this.cy + Math.sin(tip) * tipR, 2.4 * pulse, 0, TAU);
         ctx.fill();
       }
       ctx.shadowBlur = 0;
+      ctx.globalAlpha = 1;
+    }
+
+    // la brace: nel silenzio un solo punto ambrato respira piano — il sistema è vivo
+    if (quiet) {
+      ctx.globalAlpha = 0.16 + 0.1 * Math.sin((now / 2600) * TAU);
+      ctx.fillStyle = RING;
+      ctx.beginPath();
+      ctx.arc(this.cx, this.cy, 2.2, 0, TAU);
+      ctx.fill();
       ctx.globalAlpha = 1;
     }
 
@@ -508,7 +576,5 @@ export class Scene {
     vig.addColorStop(1, `rgba(0,0,0,${0.25 + 0.45 * this.tension})`);
     ctx.fillStyle = vig;
     ctx.fillRect(0, 0, this.w, this.h);
-
-    if (beatT > BEAT.BLACKOUT + BEAT.FALL + BEAT.BANG + BEAT.QUIET) this.beat = null;
   }
 }
