@@ -1,24 +1,24 @@
-// js/main.js — orchestrazione: feed → scena, audio, etichette
+// js/main.js — orchestrazione v2: feed → scena, audio, badge, controlli
 import { Scene } from './demo.js';
 import { MempoolFeed } from './feed.js';
 import { SimFeed } from './fallback.js';
 import { GranularEngine } from './audio.js';
-import { feeTier, minutesSince, lastBeatLabel, tension } from './mapping.js';
+import { feeTier, minutesSince, tension } from './mapping.js';
 
 const canvas = document.getElementById('scena');
 const badge = document.getElementById('badge');
-const beatLabel = document.getElementById('ultimo-battito');
-const pendingLabel = document.getElementById('in-attesa');
 const listenBtn = document.getElementById('ascolta');
+const fsBtn = document.getElementById('fullscreen');
+const hint = document.getElementById('audio-hint');
 
 const mobile = matchMedia('(max-width: 700px)').matches;
 const reducedMotion = matchMedia('(prefers-reduced-motion: reduce)').matches;
-const scene = new Scene(canvas, { maxParticles: mobile ? 300 : 800, reducedMotion });
+const scene = new Scene(canvas, { maxParticles: mobile ? 350 : 900, reducedMotion });
 const audio = new GranularEngine();
 
 let lastBlockMs = null;
 let lastLiveMsg = 0;
-let mode = 'connecting'; // connecting | live | sim
+let mode = 'connecting';
 
 const live = new MempoolFeed();
 const sim = new SimFeed();
@@ -52,7 +52,7 @@ function wire(src) {
   });
   src.addEventListener('projected', (e) => {
     if (!feedActive(src)) return;
-    scene.setRing(e.detail.fillRatio, e.detail.feeFloor);
+    scene.setBlock(e.detail.feeFloor, e.detail.fillRatio);
   });
   src.addEventListener('block', (e) => {
     if (!feedActive(src)) return;
@@ -60,57 +60,65 @@ function wire(src) {
     scene.triggerBeat();
     audio.chord();
   });
-  src.addEventListener('stats', (e) => {
-    if (!feedActive(src)) return;
-    pendingLabel.textContent = `${e.detail.pending.toLocaleString('it-IT')} scambi in attesa`;
-  });
   src.addEventListener('init', (e) => {
-    if (src === live) lastBlockMs = e.detail.tipTimestampMs;
+    if (src === live) {
+      lastBlockMs = e.detail.tipTimestampMs;
+      scene.seedCycle(Date.now() - lastBlockMs);
+    }
   });
 }
 wire(live);
 wire(sim);
 
-// ogni segnale live rinnova il watchdog e riporta in diretta
 live.addEventListener('status', (e) => {
-  if (e.detail.state === 'up') { lastLiveMsg = performance.now(); }
+  if (e.detail.state === 'up') lastLiveMsg = performance.now();
 });
 for (const ev of ['tx', 'projected', 'block', 'stats']) {
   live.addEventListener(ev, () => { lastLiveMsg = performance.now(); setMode('live'); });
 }
 
-// watchdog: 8 s senza messaggi live → simulazione entro ~10 s (criterio della spec).
-// In diretta i messaggi arrivano ~1/s, quindi 8 s di vuoto = rete davvero giù.
+// watchdog: 8 s senza messaggi live → simulazione entro ~10 s.
 setInterval(() => {
   if (performance.now() - lastLiveMsg > 8_000) setMode('sim');
 }, 2000);
 
 live.connect();
 
-// hook di debug per le verifiche manuali (usato dai passi di test del piano)
-window.__bdg = { scene, audio, sim, live };
-
-// etichetta «ultimo battito» + tensione
+// tensione dell'attesa (vignetta, respiro dell'anello, riverbero)
 setInterval(() => {
   if (lastBlockMs == null) return;
-  const m = minutesSince(lastBlockMs, Date.now());
-  beatLabel.textContent = lastBeatLabel(m);
-  scene.setTension(tension(m));
-  audio.setTension(tension(m));
+  const t = tension(minutesSince(lastBlockMs, Date.now()));
+  scene.setTension(t);
+  audio.setTension(t);
 }, 5000);
 
-// pulsante Ascolta
+// audio: icona speaker + hint alla prima visita
+if (!localStorage.getItem('bdg_hint')) {
+  hint.hidden = false;
+  setTimeout(() => { hint.hidden = true; }, 6000);
+}
 listenBtn.addEventListener('click', async () => {
+  hint.hidden = true;
+  localStorage.setItem('bdg_hint', '1');
   if (!audio.active) {
     await audio.start();
-    listenBtn.textContent = '⏸ silenzio';
     listenBtn.setAttribute('aria-pressed', 'true');
+    listenBtn.setAttribute('aria-label', "disattiva l'audio");
   } else {
     audio.stop();
-    listenBtn.textContent = '▶ ascolta';
     listenBtn.setAttribute('aria-pressed', 'false');
+    listenBtn.setAttribute('aria-label', "attiva l'audio");
   }
 });
+
+// schermo intero (dov'è supportato; su iPhone l'icona resta nascosta)
+if (document.documentElement.requestFullscreen) {
+  fsBtn.hidden = false;
+  fsBtn.addEventListener('click', () => {
+    if (document.fullscreenElement) document.exitFullscreen();
+    else document.documentElement.requestFullscreen();
+  });
+}
 
 // ciclo di rendering
 let prev = performance.now();
@@ -122,3 +130,6 @@ function frame(now) {
 }
 requestAnimationFrame(frame);
 addEventListener('resize', () => scene.resize());
+
+// hook di debug per le verifiche manuali
+window.__bdg = { scene, audio, sim, live };

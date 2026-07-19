@@ -31,8 +31,13 @@ export class Scene {
     this.ctx.setTransform(this.dpr, 0, 0, this.dpr, 0, 0);
     this.w = w; this.h = h;
     this.cx = w / 2;
-    this.cy = h * 0.46;
-    this.R = Math.min(w, h) * 0.30;
+    this.cy = h * 0.5;
+    this.R = Math.min(w, h) * 0.28;
+  }
+
+  // ancora l'anello-timer al tempo reale già trascorso dall'ultimo blocco
+  seedCycle(elapsedMs) {
+    this.cycleStart = performance.now() - Math.min(600_000, Math.max(0, elapsedMs));
   }
 
   addTx({ vsize, feeRate, value }) {
@@ -55,9 +60,9 @@ export class Scene {
       state: 'arriving', // arriving | waiting | selected | evicted | confirmed
       ang: Math.random() * TAU,
       angSpeed: (0.05 + t * 0.12) * (Math.random() < 0.5 ? 1 : -1), // rad/s
-      orbit: this.R * (1.25 + (1 - t) * 1.2) * (0.92 + Math.random() * 0.16),
+      orbit: this.R * (1.12 + (1 - t) * 0.6) * (0.94 + Math.random() * 0.12),
       inner: 0,
-      r: this.R * 3.1,
+      r: this.R * 2.4,
       alpha: 0,
     });
   }
