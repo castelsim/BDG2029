@@ -1,0 +1,248 @@
+/* Il Battito di Bitcoin — simonecastellan.com/BDG2029 */
+
+:root {
+  --nero: #050506;
+  --nero2: #0b0b0d;
+  --nero3: #101013;
+  --testo: #ede7dc;
+  --testo-tenue: #a89f90;
+  --ambra: #ffb25e;
+  --caldo: #ffe8c8;
+  --freddo: #eaf2ff;
+  --serif: "Iowan Old Style", "Palatino Linotype", Palatino, Georgia, "Times New Roman", serif;
+  --mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+}
+
+* { margin: 0; padding: 0; box-sizing: border-box; }
+
+html { scroll-behavior: smooth; }
+
+body {
+  background: var(--nero);
+  color: var(--testo);
+  font-family: var(--serif);
+  font-size: 1.125rem;
+  line-height: 1.65;
+}
+
+a { color: var(--ambra); text-underline-offset: 3px; }
+
+/* ---------- hero ---------- */
+
+.hero {
+  position: relative;
+  height: 100svh;
+  min-height: 560px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  overflow: hidden;
+}
+
+#scena {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+}
+
+.hero-testo { position: relative; padding: 1rem; }
+
+.occhiello {
+  font-family: var(--mono);
+  font-size: 0.72rem;
+  letter-spacing: 0.28em;
+  text-transform: uppercase;
+  color: var(--testo-tenue);
+  margin-bottom: 1.2rem;
+}
+
+h1 {
+  font-size: clamp(2.6rem, 8vw, 5.2rem);
+  font-weight: 500;
+  line-height: 1.05;
+  letter-spacing: 0.01em;
+  text-shadow: 0 0 60px rgba(255, 178, 94, 0.25);
+}
+
+.sottotitolo {
+  margin: 1.4rem auto 2rem;
+  max-width: 34em;
+  color: var(--caldo);
+  font-style: italic;
+  font-size: clamp(1rem, 2.4vw, 1.25rem);
+}
+
+#ascolta {
+  font-family: var(--mono);
+  font-size: 0.9rem;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--nero);
+  background: var(--ambra);
+  border: none;
+  border-radius: 999px;
+  padding: 0.85rem 2.2rem;
+  cursor: pointer;
+  transition: transform 0.15s ease, box-shadow 0.15s ease;
+  box-shadow: 0 0 24px rgba(255, 178, 94, 0.35);
+}
+#ascolta:hover { transform: scale(1.04); box-shadow: 0 0 40px rgba(255, 178, 94, 0.5); }
+
+.stato { margin-top: 1.6rem; font-family: var(--mono); font-size: 0.75rem; letter-spacing: 0.08em; }
+#badge { color: var(--testo-tenue); }
+#badge[data-state="live"] { color: var(--ambra); }
+#badge[data-state="sim"] { color: var(--testo-tenue); font-style: italic; }
+
+.dati-vivi {
+  margin-top: 0.5rem;
+  font-family: var(--mono);
+  font-size: 0.75rem;
+  color: var(--testo-tenue);
+  letter-spacing: 0.06em;
+}
+
+.scroll-hint {
+  position: absolute;
+  bottom: 1.4rem;
+  left: 0; right: 0;
+  text-align: center;
+  font-family: var(--mono);
+  font-size: 0.72rem;
+  letter-spacing: 0.12em;
+  color: var(--testo-tenue);
+  text-decoration: none;
+}
+
+/* ---------- sezioni ---------- */
+
+.sezione {
+  max-width: 46rem;
+  margin: 0 auto;
+  padding: 5.5rem 1.4rem 1rem;
+}
+
+.sezione + .sezione { border-top: 1px solid rgba(255, 178, 94, 0.12); margin-top: 4rem; }
+
+h2 {
+  font-size: clamp(1.7rem, 4.5vw, 2.4rem);
+  font-weight: 500;
+  margin-bottom: 1.6rem;
+}
+h2::after {
+  content: "";
+  display: block;
+  width: 2.2rem;
+  height: 2.2rem;
+  margin-top: 0.9rem;
+  border: 2px solid var(--ambra);
+  border-radius: 50%;
+  border-left-color: transparent;
+  opacity: 0.6;
+}
+
+h3 { font-weight: 600; font-size: 1.15rem; }
+.sotto-titolo { margin-top: 2.4rem; margin-bottom: 0.8rem; }
+
+.sezione p + p { margin-top: 1rem; }
+
+.tre-frasi p { margin-top: 1.2rem; font-size: 1.2rem; }
+.tre-frasi strong { color: var(--caldo); }
+
+blockquote {
+  margin: 2.2rem 0;
+  padding-left: 1.4rem;
+  border-left: 2px solid var(--ambra);
+  font-size: 1.35rem;
+  font-style: italic;
+  color: var(--caldo);
+}
+.nota-blockquote { font-size: 0.85rem; font-style: normal; color: var(--testo-tenue); }
+
+.stato-progetto {
+  margin-top: 2rem;
+  padding: 1rem 1.2rem;
+  background: var(--nero3);
+  border-radius: 10px;
+  font-size: 0.98rem;
+  color: var(--testo-tenue);
+}
+.stato-progetto strong { color: var(--testo); }
+
+/* ---------- pipeline «come si realizza» ---------- */
+
+.pipeline { list-style: none; counter-reset: tappa; margin: 1rem 0 2rem; }
+
+.pipeline li {
+  position: relative;
+  padding: 1rem 0 1rem 3.4rem;
+}
+.pipeline li + li::before {
+  content: "↓";
+  position: absolute;
+  left: 0.95rem;
+  top: -0.7rem;
+  color: var(--ambra);
+  opacity: 0.55;
+}
+
+.tappa {
+  position: absolute;
+  left: 0;
+  top: 1.05rem;
+  width: 2.3rem;
+  height: 2.3rem;
+  border: 1.5px solid var(--ambra);
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-family: var(--mono);
+  font-size: 0.85rem;
+  color: var(--ambra);
+}
+
+.pipeline p { margin-top: 0.3rem; color: var(--testo-tenue); font-size: 1rem; }
+.pipeline p, .pipeline h3 { max-width: 36em; }
+
+.allestimenti {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 1rem;
+  margin: 1.5rem 0;
+}
+
+.allestimenti article {
+  background: var(--nero2);
+  border: 1px solid rgba(255, 178, 94, 0.15);
+  border-radius: 12px;
+  padding: 1.3rem;
+}
+.allestimenti .specifica {
+  font-family: var(--mono);
+  font-size: 0.75rem;
+  color: var(--ambra);
+  margin: 0.35rem 0 0.7rem;
+  letter-spacing: 0.05em;
+}
+.allestimenti p { font-size: 0.95rem; color: var(--testo-tenue); }
+
+/* ---------- autore e footer ---------- */
+
+.autore p + p { margin-top: 0.6rem; }
+
+footer {
+  max-width: 46rem;
+  margin: 5rem auto 0;
+  padding: 2.5rem 1.4rem 3.5rem;
+  border-top: 1px solid rgba(255, 178, 94, 0.12);
+  font-size: 0.85rem;
+  color: var(--testo-tenue);
+}
+footer p + p { margin-top: 0.7rem; }
+
+@media (prefers-reduced-motion: reduce) {
+  html { scroll-behavior: auto; }
+  #ascolta { transition: none; }
+}
