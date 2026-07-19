@@ -12,3 +12,13 @@ Bassano del Grappa Capitale italiana della Cultura 2029.
 - Zero dipendenze, zero build, zero tracciamento. `node --test` per i test.
 
 Progetto: Simone Castellan · CryptoBassano — https://cryptobassano.it
+
+## Pubblicazione
+
+Il dominio serve le sottopagine come cartelle del repo `castelsim/simonecastellan`.
+Dopo ogni modifica qui, sincronizzare la copia pubblicata:
+
+```bash
+cp -R index.html style.css js assets ../simonecastellan/BDG2029/
+cd ../simonecastellan && git add BDG2029 && git commit -m "Aggiorna BDG2029" && git push
+```
