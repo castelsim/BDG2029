@@ -171,9 +171,6 @@ h3 { font-weight: 600; font-size: 1.15rem; }
 
 .sezione p + p { margin-top: 1rem; }
 
-.tre-frasi p { margin-top: 1.2rem; font-size: 1.2rem; }
-.tre-frasi strong { color: var(--caldo); }
-
 blockquote {
   margin: 2.2rem 0;
   padding-left: 1.4rem;
@@ -270,3 +267,10 @@ footer p + p { margin-top: 0.7rem; }
   html { scroll-behavior: auto; }
   #ascolta { transition: none; }
 }
+
+/* ---------- legenda e sottopagina ---------- */
+
+.legenda { margin: 1.2rem 0 1.6rem 1.1rem; color: var(--testo-tenue); }
+.legenda li { margin: 0.35rem 0; }
+.link-progetto { font-family: var(--mono); font-size: 0.85rem; letter-spacing: 0.06em; }
+.occhiello a { color: var(--testo-tenue); text-decoration: none; }
