@@ -27,7 +27,7 @@ export function extractTx(transactions) {
   if (!Array.isArray(transactions)) return [];
   return transactions
     .filter((t) => (t.vsize ?? 0) > 0)
-    .map((t) => ({ vsize: t.vsize, feeRate: t.rate ?? t.fee / t.vsize }));
+    .map((t) => ({ vsize: t.vsize, feeRate: t.rate ?? t.fee / t.vsize, value: t.value ?? 0 }));
 }
 
 export function pickTip(blocks) {

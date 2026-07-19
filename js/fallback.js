@@ -24,7 +24,8 @@ export function simTx(rand) {
     : r < 0.9 ? 250 + Math.round(rand() * 550)
     : 800 + Math.round(rand() * 3200);
   const feeRate = 0.2 + 60 * Math.pow(rand(), 3);
-  return { vsize, feeRate };
+  const value = Math.round(10_000 * Math.pow(10, rand() * 4)); // 10k sat … 1 BTC, scala log
+  return { vsize, feeRate, value };
 }
 
 export class SimFeed extends EventTarget {

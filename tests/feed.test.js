@@ -34,12 +34,13 @@ test('normalizeProjected: array vuoto → null, fillRatio mai > 1', () => {
 test('extractTx: usa rate se presente, scarta vsize non positivi', () => {
   const txs = extractTx(fx.transactions);
   assert.equal(txs.length, 2);
-  assert.deepEqual(txs[0], { vsize: 140.5, feeRate: fx.transactions[0].rate });
+  assert.deepEqual(txs[0], { vsize: 140.5, feeRate: fx.transactions[0].rate, value: 9948050 });
 });
 
-test('extractTx: senza rate calcola fee/vsize', () => {
+test('extractTx: senza rate calcola fee/vsize; senza value usa 0', () => {
   const [tx] = extractTx([{ fee: 200, vsize: 100 }]);
   assert.equal(tx.feeRate, 2);
+  assert.equal(tx.value, 0);
 });
 
 test('pickTip: sceglie il blocco più alto a prescindere dall\'ordine', () => {

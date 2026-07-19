@@ -30,9 +30,10 @@ test('nextBlockDelayMs: la media è nell\'ordine dei 10 minuti', () => {
 test('simTx: campi plausibili', () => {
   const rand = mulberry32(11);
   for (let i = 0; i < 500; i++) {
-    const { vsize, feeRate } = simTx(rand);
+    const { vsize, feeRate, value } = simTx(rand);
     assert.ok(vsize >= 110 && vsize <= 4000);
     assert.ok(feeRate >= 0.2 && feeRate <= 61);
+    assert.ok(value >= 10_000 && value <= 100_000_000);
   }
 });
 
@@ -50,7 +51,7 @@ test('SimFeed: a start() emette subito tx/projected/stats con le shape di Mempoo
   }
   f.start();
   f.stop();
-  assert.deepEqual(Object.keys(got.tx).sort(), ['feeRate', 'vsize']);
+  assert.deepEqual(Object.keys(got.tx).sort(), ['feeRate', 'value', 'vsize']);
   assert.deepEqual(Object.keys(got.projected).sort(), ['feeFloor', 'fillRatio', 'medianFee']);
   assert.deepEqual(Object.keys(got.stats).sort(), ['pending', 'vps']);
   assert.equal(f.timers.length, 0, 'stop() svuota i timer');
