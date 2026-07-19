@@ -16,11 +16,15 @@ export class GranularEngine {
     }
     await this.ctx.resume();
     this.active = true;
+    this.master.gain.cancelScheduledValues(this.ctx.currentTime);
     this.master.gain.setTargetAtTime(0.85, this.ctx.currentTime, 0.4);
   }
 
   stop() {
-    if (this.ctx) this.master.gain.setTargetAtTime(0, this.ctx.currentTime, 0.25);
+    if (this.ctx) {
+      this.master.gain.cancelScheduledValues(this.ctx.currentTime);
+      this.master.gain.setTargetAtTime(0, this.ctx.currentTime, 0.25);
+    }
     this.active = false;
   }
 
@@ -87,7 +91,7 @@ export class GranularEngine {
 
   // un grano per transazione: pitch dalla fascia di commissione (pentatonica su 3 ottave)
   grain(tier) {
-    if (!this.active || this.grains > 24) return;
+    if (!this.active || this.grains >= 24) return;
     this.grains++;
     const idx = Math.min(14, Math.floor(tier * 15));
     const midi = 57 + 12 * Math.floor(idx / 5) + SCALE[idx % 5];
