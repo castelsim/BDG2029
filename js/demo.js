@@ -34,7 +34,7 @@ export class Scene {
     this.cx = w / 2;
     this.cy = h * 0.5;
     this.R = Math.min(w, h) * 0.28;
-    if (this.bands) { this._crowdAt = 0; this._drawCrowd(); }
+    if (this.bands) this._buildCrowd();
   }
 
   // ancora l'anello-timer al tempo reale già trascorso dall'ultimo blocco
@@ -76,48 +76,50 @@ export class Scene {
     this._reconcile();
   }
 
-  // lo strato-folla: TUTTA la coda reale, una fascia per blocco proiettato.
-  // Ridisegnato su canvas fuori schermo al massimo ogni 20 s (è un'immagine, non particelle).
+  // la galassia della fila: campione animato della coda reale (una fascia per blocco
+  // proiettato). Ogni punto rappresenta ~total/N transazioni; il conteggio vero sta in legenda.
   setCrowd(bands) {
     if (!Array.isArray(bands) || bands.length === 0) return;
     this.bands = bands;
     const now = performance.now();
-    if (!this._crowdAt || now - this._crowdAt > 20_000) this._drawCrowd();
+    if (!this._crowdAt || now - this._crowdAt > 60_000) this._buildCrowd();
   }
 
-  _drawCrowd() {
+  _buildCrowd() {
     this._crowdAt = performance.now();
     const bands = this.bands;
-    const off = this._crowd || (this._crowd = document.createElement('canvas'));
-    if (off.width !== this.w || off.height !== this.h) { off.width = this.w; off.height = this.h; }
-    const c = off.getContext('2d');
-    c.clearRect(0, 0, this.w, this.h);
+    const N = this.max >= 900 ? 2600 : 900; // campione: desktop / mobile
     let total = 0;
     for (const b of bands) total += b.nTx;
-    const budget = Math.min(120_000, total);
-    const scale = budget / Math.max(1, total);
+    if (total === 0) return;
     const nBands = bands.length;
+    const dots = [];
     for (let i = 0; i < nBands; i++) {
       const b = bands[i];
-      const rand = mulberry32(1000 + i); // seed fisso: la nube non «salta» tra un ridisegno e l'altro
-      const n = Math.round(b.nTx * scale);
+      const rand = mulberry32(1000 + i); // seed fisso: il campione non «salta» tra un rebuild e l'altro
+      const n = Math.round((b.nTx / total) * N);
       const rBase = this.R * (1.18 + (i / nBands) * 1.15);
-      const thick = this.R * (1.15 / nBands) * 1.6; // fasce sovrapposte: nube, non bersaglio
-      // 5 secchielli di colore per fascia: fillStyle cambia 5 volte, non n volte
-      for (let k = 0; k < 5; k++) {
-        const fee = b.feeMin + ((b.feeMax - b.feeMin) * k * k) / 16; // quadratica: il grosso vicino al minimo
-        c.fillStyle = particleColor(feeTier(fee));
-        c.globalAlpha = 0.33;
-        const nk = Math.ceil(n / 5);
-        for (let j = 0; j < nk; j++) {
-          const ang = rand() * TAU;
-          const r = rBase + ((rand() + rand()) / 2) * thick; // bordi morbidi
-          const s = rand() < 0.85 ? 1 : 2;
-          c.fillRect(this.cx + Math.cos(ang) * r, this.cy + Math.sin(ang) * r, s, s);
-        }
+      const thick = this.R * (1.15 / nBands) * 1.6;
+      const depth = i / (nBands - 1 || 1); // 0 = prossima al blocco · 1 = fondo della fila
+      for (let j = 0; j < n; j++) {
+        const fee = b.feeMin + (b.feeMax - b.feeMin) * rand() * rand(); // il grosso vicino al minimo
+        const r = rBase + ((rand() + rand()) / 2) * thick;
+        dots.push({
+          r,
+          ang: rand() * TAU,
+          // rotazione differenziale da galassia: dentro più veloce, il fondo quasi fermo
+          w: 0.014 * Math.pow(this.R / r, 1.5) * (0.85 + rand() * 0.3),
+          color: particleColor(feeTier(fee)),
+          s: rand() < 0.8 ? 1 : 2,
+          ph: rand() * TAU,
+          twf: 0.25 + (1 - depth) * 0.9 + rand() * 0.2, // le dormienti scintillano piano
+          a: 0.28 + (1 - depth) * 0.15,
+          band: i,
+          fade: 0,
+        });
       }
     }
-    c.globalAlpha = 1;
+    this.crowd = dots;
   }
 
   setTension(t) { this.tension = t; }
@@ -164,6 +166,8 @@ export class Scene {
     for (const p of this.particles) {
       if (p.state === 'selected') p.state = 'confirmed';
     }
+    // la prima fila della galassia entra nel blocco: sparisce nel blackout
+    if (this.crowd) this.crowd = this.crowd.filter((d) => d.band !== 0);
   }
 
   stats() {
@@ -230,14 +234,18 @@ export class Scene {
     const quiet = beatT > BEAT.BLACKOUT + BEAT.FALL;
     const dim = quiet ? 0.35 : 1;
 
-    // la nube della fila vera: deriva lentissima, respiro leggero
-    if (this._crowd) {
-      ctx.save();
-      ctx.globalAlpha = (quiet ? 0.12 : 0.5) * (0.85 + 0.15 * Math.sin((now / 9000) * TAU));
-      ctx.translate(this.cx, this.cy);
-      ctx.rotate(now * 0.0000025); // ~un giro in 42 minuti
-      ctx.drawImage(this._crowd, -this.cx, -this.cy);
-      ctx.restore();
+    // la galassia della fila: punti individuali in lenta orbita differenziale
+    if (this.crowd) {
+      const crowdDim = quiet ? 0.25 : 1;
+      for (const d of this.crowd) {
+        d.ang += (d.w * dt) / 1000;
+        if (d.fade < 1) d.fade = Math.min(1, d.fade + dt * 0.0005);
+        const tw = 0.55 + 0.45 * Math.sin(d.ph + now * 0.001 * d.twf);
+        ctx.globalAlpha = d.a * tw * d.fade * crowdDim;
+        ctx.fillStyle = d.color;
+        ctx.fillRect(this.cx + Math.cos(d.ang) * d.r, this.cy + Math.sin(d.ang) * d.r, d.s, d.s);
+      }
+      ctx.globalAlpha = 1;
     }
 
     // particelle: scia (valore, solo in movimento) + nucleo (fee)
