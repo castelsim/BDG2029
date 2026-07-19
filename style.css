@@ -153,7 +153,10 @@ h2 {
   font-size: clamp(1.7rem, 4.5vw, 2.4rem);
   font-weight: 500;
   margin-bottom: 1.6rem;
+  text-wrap: balance;
 }
+
+p, li { text-wrap: pretty; }
 h2::after {
   content: "";
   display: block;
@@ -167,7 +170,6 @@ h2::after {
 }
 
 h3 { font-weight: 600; font-size: 1.15rem; }
-.sotto-titolo { margin-top: 2.4rem; margin-bottom: 0.8rem; }
 
 .sezione p + p { margin-top: 1rem; }
 
@@ -191,67 +193,31 @@ blockquote {
 }
 .stato-progetto strong { color: var(--testo); }
 
-/* ---------- pipeline «come si realizza» ---------- */
+/* ---------- glifi «cosa stai guardando» ---------- */
 
-.pipeline { list-style: none; counter-reset: tappa; margin: 1rem 0 2rem; }
-
-.pipeline li {
-  position: relative;
-  padding: 1rem 0 1rem 3.4rem;
-}
-.pipeline li + li::before {
-  content: "↓";
-  position: absolute;
-  left: 0.95rem;
-  top: -0.7rem;
-  color: var(--ambra);
-  opacity: 0.55;
-}
-
-.tappa {
-  position: absolute;
-  left: 0;
-  top: 1.05rem;
-  width: 2.3rem;
-  height: 2.3rem;
-  border: 1.5px solid var(--ambra);
+.glifi { list-style: none; margin: 1.6rem 0 0; display: grid; gap: 1.15rem; padding: 0; }
+.glifi li { display: flex; gap: 1rem; align-items: baseline; }
+.glifi strong { color: var(--caldo); }
+.glifo {
+  flex: none;
+  width: 12px;
+  height: 12px;
   border-radius: 50%;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-family: var(--mono);
-  font-size: 0.85rem;
-  color: var(--ambra);
+  background: var(--c, var(--ambra));
+  box-shadow: 0 0 12px var(--c, var(--ambra));
+  position: relative;
+  top: 1px;
 }
+.glifo-grad { background: linear-gradient(90deg, #ff9a3c, #ffe8c8, #b4d2ff); box-shadow: 0 0 12px rgba(255, 178, 94, 0.6); }
+.glifo-big { width: 17px; height: 17px; top: 3px; }
+.glifo-anello { background: transparent; border: 2.5px solid var(--ambra); box-shadow: 0 0 12px rgba(255, 178, 94, 0.7); }
+.glifo-alone { box-shadow: 0 0 18px 6px rgba(255, 178, 94, 0.55); }
+.glifo-live { animation: batte 2.2s ease-in-out infinite; }
+@keyframes batte { 0%, 100% { opacity: 0.5; } 50% { opacity: 1; } }
 
-.pipeline p { margin-top: 0.3rem; color: var(--testo-tenue); font-size: 1rem; }
-.pipeline p, .pipeline h3 { max-width: 36em; }
+.scala { margin-top: 1.6rem; font-family: var(--mono); font-size: 0.85rem; color: var(--ambra); letter-spacing: 0.04em; }
 
-.allestimenti {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-  gap: 1rem;
-  margin: 1.5rem 0;
-}
-
-.allestimenti article {
-  background: var(--nero2);
-  border: 1px solid rgba(255, 178, 94, 0.15);
-  border-radius: 12px;
-  padding: 1.3rem;
-}
-.allestimenti .specifica {
-  font-family: var(--mono);
-  font-size: 0.75rem;
-  color: var(--ambra);
-  margin: 0.35rem 0 0.7rem;
-  letter-spacing: 0.05em;
-}
-.allestimenti p { font-size: 0.95rem; color: var(--testo-tenue); }
-
-/* ---------- autore e footer ---------- */
-
-.autore p + p { margin-top: 0.6rem; }
+/* ---------- footer ---------- */
 
 footer {
   max-width: 46rem;
@@ -268,9 +234,3 @@ footer p + p { margin-top: 0.7rem; }
   #ascolta { transition: none; }
 }
 
-/* ---------- legenda e sottopagina ---------- */
-
-.legenda { margin: 1.2rem 0 1.6rem 1.1rem; color: var(--testo-tenue); }
-.legenda li { margin: 0.35rem 0; }
-.link-progetto { font-family: var(--mono); font-size: 0.85rem; letter-spacing: 0.06em; }
-.occhiello a { color: var(--testo-tenue); text-decoration: none; }
