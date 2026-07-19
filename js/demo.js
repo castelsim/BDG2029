@@ -6,7 +6,7 @@ import {
 import { mulberry32 } from './fallback.js';
 
 const TAU = Math.PI * 2;
-const BEAT = { BLACKOUT: 150, FALL: 1200, QUIET: 3000 }; // ms
+const BEAT = { BLACKOUT: 150, FALL: 1200, BANG: 900, QUIET: 3000 }; // ms
 const RING = 'rgb(255, 178, 94)'; // l'anello resta ambra
 
 export class Scene {
@@ -231,17 +231,36 @@ export class Scene {
       return;
     }
 
-    const quiet = beatT > BEAT.BLACKOUT + BEAT.FALL;
+    // fasi del battito: blackout → collasso → BIG BANG → quiete
+    const bangStart = BEAT.BLACKOUT + BEAT.FALL;
+    const bangT = beatT - bangStart;
+    const inBang = bangT >= 0 && bangT < BEAT.BANG;
+    const quiet = beatT >= bangStart + BEAT.BANG;
     const dim = quiet ? 0.35 : 1;
 
-    // la galassia della fila: punti individuali in lenta orbita differenziale
+    // onda d'urto del big bang: raggio e intensità
+    let waveR = -1;
+    let waveGlow = 0;
+    if (inBang) {
+      const k = bangT / BEAT.BANG;
+      waveR = (1 - Math.pow(1 - k, 3)) * Math.max(this.w, this.h) * 0.72;
+      waveGlow = Math.pow(1 - k, 1.4);
+    }
+
+    // la galassia della fila: punti individuali in lenta orbita differenziale;
+    // al passaggio dell'onda d'urto, la fila si illumina
     if (this.crowd) {
       const crowdDim = quiet ? 0.25 : 1;
       for (const d of this.crowd) {
         d.ang += (d.w * dt) / 1000;
         if (d.fade < 1) d.fade = Math.min(1, d.fade + dt * 0.0005);
         const tw = 0.55 + 0.45 * Math.sin(d.ph + now * 0.001 * d.twf);
-        ctx.globalAlpha = d.a * tw * d.fade * crowdDim;
+        let a = d.a * tw * d.fade * crowdDim;
+        if (waveR > 0) {
+          const dist = Math.abs(d.r - waveR);
+          if (dist < 70) a = Math.min(1, a + ((1 - dist / 70) * 0.8 + 0.1) * waveGlow);
+        }
+        ctx.globalAlpha = a;
         ctx.fillStyle = d.color;
         ctx.fillRect(this.cx + Math.cos(d.ang) * d.r, this.cy + Math.sin(d.ang) * d.r, d.s, d.s);
       }
@@ -255,7 +274,11 @@ export class Scene {
       const x = this.cx + Math.cos(p.ang) * p.r;
       const y = this.cy + Math.sin(p.ang) * p.r;
       const tw = 0.55 + 0.45 * Math.sin(p.born + now * 0.001 * (0.6 + p.t * 1.6));
-      const a = Math.max(0, p.alpha * tw * dim);
+      let a = Math.max(0, p.alpha * tw * dim);
+      if (waveR > 0) {
+        const dist = Math.abs(p.r - waveR);
+        if (dist < 70) a = Math.min(1, a + (1 - dist / 70) * 0.7 * waveGlow);
+      }
 
       // scia-cometa: lunghezza e luminosità = valore trasferito (scala log via halo);
       // appare solo nei movimenti veri (ingresso, espulsione, ingresso nel blocco),
@@ -289,6 +312,62 @@ export class Scene {
       ctx.fill();
     }
     ctx.globalAlpha = 1;
+
+    // BIG BANG: lampo centrale, scintille di luce, onda d'urto. Energia, non transazioni:
+    // ciò che è entrato nel blocco resta assorbito per sempre.
+    if (inBang && !this.reduced) {
+      if (!this.beat.sparks) {
+        const nS = this.max >= 900 ? 90 : 40;
+        this.beat.sparks = Array.from({ length: nS }, () => ({
+          ang: Math.random() * TAU,
+          sp: (2.5 + Math.random() * 9) * (this.R / 240),
+          dist: this.R * 0.05,
+          w: Math.random() < 0.7 ? 1.2 : 2,
+          col: Math.random() < 0.55 ? '#ffffff' : RING,
+        }));
+      }
+      for (const sk of this.beat.sparks) {
+        sk.dist += (sk.sp * dt) / 16.7;
+        const sx = this.cx + Math.cos(sk.ang) * sk.dist;
+        const sy = this.cy + Math.sin(sk.ang) * sk.dist;
+        const tail = Math.min(60, sk.sp * 7);
+        const bx = this.cx + Math.cos(sk.ang) * Math.max(0, sk.dist - tail);
+        const by = this.cy + Math.sin(sk.ang) * Math.max(0, sk.dist - tail);
+        const g = ctx.createLinearGradient(sx, sy, bx, by);
+        g.addColorStop(0, sk.col);
+        g.addColorStop(1, 'rgba(5, 5, 6, 0)');
+        ctx.strokeStyle = g;
+        ctx.lineWidth = sk.w;
+        ctx.lineCap = 'round';
+        ctx.globalAlpha = waveGlow;
+        ctx.beginPath();
+        ctx.moveTo(sx, sy);
+        ctx.lineTo(bx, by);
+        ctx.stroke();
+      }
+      ctx.globalAlpha = 1;
+      // onda d'urto
+      ctx.strokeStyle = `rgba(255, 232, 200, ${0.75 * waveGlow})`;
+      ctx.lineWidth = 2 + 14 * waveGlow;
+      ctx.shadowColor = RING;
+      ctx.shadowBlur = 30 * waveGlow;
+      ctx.beginPath();
+      ctx.arc(this.cx, this.cy, waveR, 0, TAU);
+      ctx.stroke();
+      ctx.shadowBlur = 0;
+    }
+    if (inBang) {
+      // lampo centrale (unica parte mantenuta anche con reduced motion, attenuata)
+      const k = bangT / BEAT.BANG;
+      const soft = this.reduced ? 0.4 : 1;
+      const fr = this.R * (0.25 + 1.5 * (1 - Math.pow(1 - k, 2)));
+      const fg = ctx.createRadialGradient(this.cx, this.cy, 0, this.cx, this.cy, fr);
+      fg.addColorStop(0, `rgba(255, 255, 255, ${0.95 * soft * Math.pow(1 - k, 1.6)})`);
+      fg.addColorStop(0.35, `rgba(255, 178, 94, ${0.5 * soft * Math.pow(1 - k, 1.6)})`);
+      fg.addColorStop(1, 'rgba(255, 178, 94, 0)');
+      ctx.fillStyle = fg;
+      ctx.fillRect(0, 0, this.w, this.h);
+    }
 
     // anello base
     ctx.lineWidth = 1.5;
@@ -344,6 +423,6 @@ export class Scene {
     ctx.fillStyle = vig;
     ctx.fillRect(0, 0, this.w, this.h);
 
-    if (beatT > BEAT.BLACKOUT + BEAT.FALL + BEAT.QUIET) this.beat = null;
+    if (beatT > BEAT.BLACKOUT + BEAT.FALL + BEAT.BANG + BEAT.QUIET) this.beat = null;
   }
 }
