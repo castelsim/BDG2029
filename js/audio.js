@@ -16,20 +16,21 @@ export class GranularEngine {
     this.silT0 = 0; // finestra di silenzio vero
     this.silT1 = 0;
     this._muteUntilCtx = -1; // in tempo del contesto audio: il basso resta muto fino a qui
-    // baseline «suono di prima»: tono puro, basso liscio e fisso, nessun letto di rumore.
-    // Punto di partenza del mixer — tutto il resto è extra facoltativo, a 0 di default.
+    // baseline scelta e accordata a orecchio dall'autore col mixer di regia (20/07/2026):
+    // tono puro, drone guidato dai dati ma liscio (droneBeatMax=0.3 annulla il battimento
+    // legato alla tensione), nessun letto di rumore, nessun suono di selezione.
     this.params = {
-      master: 0.85,
-      glass: 0,            // 0 = solo tono puro · 1 = solo vetro/rumore
-      grainQ: 16,           // strettezza della risonanza dello strato vetro (se glass > 0)
+      master: 0.95,
+      glass: 0,             // 0 = solo tono puro · 1 = solo vetro/rumore
+      grainQ: 18,            // strettezza della risonanza dello strato vetro (se glass > 0)
       grainLevel: 1,
       droneLevel: 1,
-      droneReactive: 0,     // 0 = basso LISCIO e fisso (com'era) · 1 = pienamente guidato dai dati
-      droneBeatMax: 1.6,    // Hz di battimento del drone a tensione piena (attivo solo se reattivo > 0)
-      macroLevel: 0,        // letto di rumore della mempool (0 = assente, com'era)
-      chordGlass: 0,        // quota d'aria nell'accordo (0 = solo tono, com'era)
+      droneReactive: 1,      // frequenza/livello del drone guidati dai dati reali
+      droneBeatMax: 0.3,     // = battimento base: a parità, il battimento resta liscio
+      macroLevel: 0,         // letto di rumore della mempool (0 = assente)
+      chordGlass: 0,         // quota d'aria nell'accordo (0 = solo tono)
       chordLevel: 1,
-      selectionLevel: 1,
+      selectionLevel: 0,     // suoni di selezione disattivati
       verbSeconds: 3.5,
     };
   }

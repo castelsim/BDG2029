@@ -1,11 +1,11 @@
 // js/mixer.js — pannello di regia per il tuning a orecchio (solo con ?mixer=1).
 // Slider applicati dal vivo su __bdg.audio.params + copia dei valori scelti.
 export function buildMixer(audio) {
-  // punto di partenza: il suono «di prima» — tono puro, basso liscio e fisso, niente letto
+  // punto di partenza: baseline accordata a orecchio dall'autore (20/07/2026)
   const BASELINE = {
-    master: 0.85, glass: 0, grainQ: 16, grainLevel: 1, droneLevel: 1,
-    droneReactive: 0, droneBeatMax: 1.6, macroLevel: 0, chordGlass: 0,
-    chordLevel: 1, selectionLevel: 1,
+    master: 0.95, glass: 0, grainQ: 18, grainLevel: 1, droneLevel: 1,
+    droneReactive: 1, droneBeatMax: 0.3, macroLevel: 0, chordGlass: 0,
+    chordLevel: 1, selectionLevel: 0,
   };
   const DEFS = [
     ['master', 0, 1, 0.01, 'volume generale'],
