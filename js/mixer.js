@@ -1,6 +1,12 @@
 // js/mixer.js — pannello di regia per il tuning a orecchio (solo con ?mixer=1).
 // Slider applicati dal vivo su __bdg.audio.params + copia dei valori scelti.
 export function buildMixer(audio) {
+  // punto di partenza: il suono «di prima» — tono puro, basso liscio e fisso, niente letto
+  const BASELINE = {
+    master: 0.85, glass: 0, grainQ: 16, grainLevel: 1, droneLevel: 1,
+    droneReactive: 0, droneBeatMax: 1.6, macroLevel: 0, chordGlass: 0,
+    chordLevel: 1, selectionLevel: 1,
+  };
   const DEFS = [
     ['master', 0, 1, 0.01, 'volume generale'],
     ['grainLevel', 0, 2, 0.05, 'grani (particelle)'],
@@ -38,6 +44,7 @@ export function buildMixer(audio) {
     </style>
     <h3>Regia audio</h3>
     <button id="mixer-audio">🔊 attiva audio</button>
+    <button id="mixer-baseline" class="ghost">↺ basso liscio (partenza)</button>
     <div id="mixer-sliders"></div>
     <button id="mixer-beat">B · battito di prova</button>
     <button id="mixer-copy" class="ghost">Copia valori</button>
@@ -48,6 +55,18 @@ export function buildMixer(audio) {
   const ctrl = document.querySelector('.controlli');
   if (ctrl) ctrl.style.right = '290px';
   const wrap = box.querySelector('#mixer-sliders');
+  const sliders = {};
+  const applyAndRefresh = (key, v) => {
+    audio.params[key] = v;
+    box.querySelector(`#mv-${key}`).textContent = v;
+    sliders[key].value = v;
+    // i parametri di livello continuo vanno riapplicati subito
+    audio.setMacro({});
+    audio.setTension(audio.tension);
+    if (key === 'master' && audio.active && audio.ctx) {
+      audio.master.gain.setTargetAtTime(v, audio.ctx.currentTime, 0.1);
+    }
+  };
   for (const [key, min, max, step, label] of DEFS) {
     const lab = document.createElement('label');
     lab.innerHTML = `${label} <span class="val" id="mv-${key}">${audio.params[key]}</span>`;
@@ -55,20 +74,14 @@ export function buildMixer(audio) {
     inp.type = 'range';
     inp.min = min; inp.max = max; inp.step = step;
     inp.value = audio.params[key];
-    inp.oninput = () => {
-      const v = parseFloat(inp.value);
-      audio.params[key] = v;
-      box.querySelector(`#mv-${key}`).textContent = v;
-      // i parametri di livello continuo vanno riapplicati subito
-      audio.setMacro({});
-      audio.setTension(audio.tension);
-      if (key === 'master' && audio.active && audio.ctx) {
-        audio.master.gain.setTargetAtTime(v, audio.ctx.currentTime, 0.1);
-      }
-    };
+    inp.oninput = () => applyAndRefresh(key, parseFloat(inp.value));
+    sliders[key] = inp;
     wrap.appendChild(lab);
     wrap.appendChild(inp);
   }
+  box.querySelector('#mixer-baseline').onclick = () => {
+    for (const [key, v] of Object.entries(BASELINE)) applyAndRefresh(key, v);
+  };
   const audioBtn = box.querySelector('#mixer-audio');
   audioBtn.onclick = () => {
     document.getElementById('ascolta')?.click();

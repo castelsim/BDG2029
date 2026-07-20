@@ -15,16 +15,18 @@ export class GranularEngine {
     this.tension = 0;
     this.silT0 = 0; // finestra di silenzio vero
     this.silT1 = 0;
+    // baseline «suono di prima»: tono puro, basso liscio e fisso, nessun letto di rumore.
+    // Punto di partenza del mixer — tutto il resto è extra facoltativo, a 0 di default.
     this.params = {
       master: 0.85,
-      glass: 0,           // 0 = solo tono puro (il suono «di prima») · 1 = solo vetro/rumore
-      grainQ: 16,         // strettezza della risonanza dello strato vetro (se glass > 0)
+      glass: 0,            // 0 = solo tono puro · 1 = solo vetro/rumore
+      grainQ: 16,           // strettezza della risonanza dello strato vetro (se glass > 0)
       grainLevel: 1,
       droneLevel: 1,
-      droneReactive: 0.25, // 0 = drone fisso com'era prima · 1 = pienamente guidato dai dati
-      droneBeatMax: 1.6,  // Hz di battimento del drone a tensione piena
-      macroLevel: 0.1,    // letto di rumore della mempool (quasi nullo: mai sopra i grani)
-      chordGlass: 0.2,    // quota d'aria nell'accordo
+      droneReactive: 0,     // 0 = basso LISCIO e fisso (com'era) · 1 = pienamente guidato dai dati
+      droneBeatMax: 1.6,    // Hz di battimento del drone a tensione piena (attivo solo se reattivo > 0)
+      macroLevel: 0,        // letto di rumore della mempool (0 = assente, com'era)
+      chordGlass: 0,        // quota d'aria nell'accordo (0 = solo tono, com'era)
       chordLevel: 1,
       selectionLevel: 1,
       verbSeconds: 3.5,
@@ -133,14 +135,17 @@ export class GranularEngine {
     return n >= this.silT0 && n < this.silT1;
   }
 
-  // tensione dell'attesa: riverbero che si allunga, battimenti del drone che si stringono
+  // tensione dell'attesa: il riverbero si allunga sempre (come prima); i battimenti del
+  // drone si stringono SOLO se droneReactive > 0 — a 0 il basso resta liscio e fisso a ±4 cents.
   setTension(t) {
     this.tension = t;
     if (!this.ctx) return;
     const ct = this.ctx.currentTime;
     this.wet.gain.setTargetAtTime(0.2 + 0.5 * t, ct, 3);
-    const beat = 0.3 + (this.params.droneBeatMax - 0.3) * t; // Hz di battimento
-    const cents = 1200 * Math.log2((55 + beat / 2) / 55);
+    const k = this.params.droneReactive;
+    const beat = 0.3 + (this.params.droneBeatMax - 0.3) * t; // Hz di battimento a piena reattività
+    const reactiveCents = 1200 * Math.log2((55 + beat / 2) / 55);
+    const cents = 4 + (reactiveCents - 4) * k; // k=0 → 4 cents fissi, identico al basso «di prima»
     this.droneOscs[0].detune.setTargetAtTime(-cents, ct, 8);
     this.droneOscs[1].detune.setTargetAtTime(cents, ct, 8);
   }
