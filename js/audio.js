@@ -15,6 +15,7 @@ export class GranularEngine {
     this.tension = 0;
     this.silT0 = 0; // finestra di silenzio vero
     this.silT1 = 0;
+    this._muteUntilCtx = -1; // in tempo del contesto audio: il basso resta muto fino a qui
     // baseline «suono di prima»: tono puro, basso liscio e fisso, nessun letto di rumore.
     // Punto di partenza del mixer — tutto il resto è extra facoltativo, a 0 di default.
     this.params = {
@@ -150,21 +151,37 @@ export class GranularEngine {
     this.droneOscs[1].detune.setTargetAtTime(cents, ct, 8);
   }
 
+  // livelli-bersaglio del drone/letto dai dati reali correnti — condivisi tra il
+  // drift lentissimo di setMacro e il fade-in rapido della rinascita dopo un blocco
+  _macroTargets() {
+    const p = this.params;
+    const k = p.droneReactive;
+    const dens = Math.min(1, Math.max(0, (this.macro.pending - 20_000) / 180_000)); // 20k…200k
+    const feeT = Math.min(1, Math.max(0, Math.log((this.macro.medianFee + 0.001) / 0.1) / Math.log(2000)));
+    return {
+      sub: (0.02 + 0.035 * dens * k) * p.droneLevel,
+      lpFreq: 150 + (90 + 170 * feeT - 150) * k,
+      macroLow: (0.006 + 0.02 * dens) * p.macroLevel,
+      macroMid: (0.002 + 0.012 * this.macro.fillRatio) * p.macroLevel,
+      drone: (0.06 + 0.03 * this.macro.fillRatio * k) * p.droneLevel,
+    };
+  }
+
   // stato complessivo della mempool → livello macroscopico. La reattività del drone è
   // dosata da droneReactive: a 0 il basso di riempimento è fisso, com'era prima.
   setMacro(part) {
     Object.assign(this.macro, part);
     if (!this.ctx) return;
     const ct = this.ctx.currentTime;
-    const p = this.params;
-    const k = p.droneReactive;
-    const dens = Math.min(1, Math.max(0, (this.macro.pending - 20_000) / 180_000)); // 20k…200k
-    const feeT = Math.min(1, Math.max(0, Math.log((this.macro.medianFee + 0.001) / 0.1) / Math.log(2000)));
-    this.subGain.gain.setTargetAtTime((0.02 + 0.035 * dens * k) * p.droneLevel, ct, 12);
-    this.droneLp.frequency.setTargetAtTime(150 + (90 + 170 * feeT - 150) * k, ct, 15);
-    this.macroLowG.gain.setTargetAtTime((0.006 + 0.02 * dens) * p.macroLevel, ct, 10);
-    this.macroMidG.gain.setTargetAtTime((0.002 + 0.012 * this.macro.fillRatio) * p.macroLevel, ct, 10);
-    this.droneGain.gain.setTargetAtTime((0.06 + 0.03 * this.macro.fillRatio * k) * p.droneLevel, ct, 12);
+    const tg = this._macroTargets();
+    this.droneLp.frequency.setTargetAtTime(tg.lpFreq, ct, 15);
+    // mentre il basso è muto per il ciclo del blocco, i dati in arrivo NON devono
+    // rianimarlo: altrimenti il silenzio si romperebbe da solo prima della rinascita
+    if (ct < this._muteUntilCtx) return;
+    this.subGain.gain.setTargetAtTime(tg.sub, ct, 12);
+    this.macroLowG.gain.setTargetAtTime(tg.macroLow, ct, 10);
+    this.macroMidG.gain.setTargetAtTime(tg.macroMid, ct, 10);
+    this.droneGain.gain.setTargetAtTime(tg.drone, ct, 12);
   }
 
   // GRANO: tono puro in primo piano (correlazione immediata particella→suono, il carattere
@@ -248,8 +265,9 @@ export class GranularEngine {
   }
 
   // CICLO DEL BLOCCO, allineato alla timeline visiva (BEAT di demo.js):
-  // collasso (il pavimento affonda) → ACCORDO al lampo (il rumore diventa tono) →
-  // coda chiusa → SILENZIO VERO → rinascita: prima il drone, poi il letto, poi i grani
+  // nell'esatto istante del battito IL BASSO VA VIA (taglio netto, non una dissolvenza)
+  // → ACCORDO al lampo (invariato) → SILENZIO VERO → rinascita: il basso e il volume
+  // generale rientrano in fade, e appena dopo tornano le transazioni col loro suono.
   blockCycle() {
     if (!this.ctx) { this.hist = [0, 0, 0, 0, 0]; return; }
     const c = this.ctx;
@@ -257,26 +275,39 @@ export class GranularEngine {
     const tFlash = t + 1.68;   // FALL + SUSPEND
     const tSil = t + 5.38;     // + BANG + RESOLVE
     const tReb = t + 8.38;     // + QUIET
-    // collasso: il pavimento affonda, il letto si ritira
-    this.droneLp.frequency.cancelScheduledValues(t);
-    this.droneLp.frequency.setTargetAtTime(65, t, 0.5);
-    this.macroLowG.gain.setTargetAtTime(0.003, t, 0.6);
-    this.macroMidG.gain.setTargetAtTime(0.001, t, 0.6);
-    // l'accordo nasce dal materiale del ciclo
+
+    // IL BASSO VA VIA qui, adesso: taglio rapido e netto — si sente la rottura.
+    // Resta muto (i dati in arrivo non lo rianimano: vedi setMacro) fino alla rinascita.
+    this._muteUntilCtx = tReb;
+    for (const g of [this.droneGain, this.subGain, this.macroLowG, this.macroMidG]) {
+      g.gain.cancelScheduledValues(t);
+    }
+    this.droneGain.gain.setTargetAtTime(0, t, 0.1);
+    this.subGain.gain.setTargetAtTime(0, t, 0.1);
+    this.macroLowG.gain.setTargetAtTime(0, t, 0.12);
+    this.macroMidG.gain.setTargetAtTime(0, t, 0.12);
+
+    // l'esplosione: l'accordo nasce dal materiale del ciclo (invariata)
     if (this.active) this._chord(tFlash);
+
     // silenzio vero: tutto a zero, coda del riverbero compresa
     this.master.gain.cancelScheduledValues(t);
     this.master.gain.setValueAtTime(this.active ? this.params.master : 0, tSil - 0.12);
     this.master.gain.linearRampToValueAtTime(0, tSil);
-    // rinascita scaglionata
+
+    // rinascita: il basso rientra in fade insieme al volume generale; le nuove
+    // transazioni si riattivano poco dopo, dentro quello stesso fade
     if (this.active) {
       this.master.gain.setValueAtTime(0, tReb);
       this.master.gain.setTargetAtTime(this.params.master, tReb, 0.9);
     }
-    this.droneLp.frequency.setTargetAtTime(90 + 170 * 0.2, tReb, 2);
-    this.macroLowG.gain.setTargetAtTime(0.012 * this.params.macroLevel, tReb + 0.6, 2);
-    this.macroMidG.gain.setTargetAtTime(0.005 * this.params.macroLevel, tReb + 0.6, 2);
-    // i grani tacciono dal silenzio fino a rinascita avviata
+    const tg = this._macroTargets();
+    this.droneGain.gain.setTargetAtTime(tg.drone, tReb, 1.3);
+    this.subGain.gain.setTargetAtTime(tg.sub, tReb, 1.3);
+    this.macroLowG.gain.setTargetAtTime(tg.macroLow, tReb + 0.3, 1.4);
+    this.macroMidG.gain.setTargetAtTime(tg.macroMid, tReb + 0.3, 1.4);
+
+    // i grani tacciono dal silenzio fino a poco dopo l'inizio della rinascita
     this.silT0 = performance.now() + 5380;
     this.silT1 = performance.now() + 9180;
     this.hist = [0, 0, 0, 0, 0];
