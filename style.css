@@ -90,6 +90,8 @@ h1 {
 #badge { color: var(--testo-tenue); }
 #badge[data-state="live"] { color: var(--ambra); }
 #badge[data-state="sim"] { font-style: italic; }
+.attesa-hero { color: var(--testo-tenue); }
+#attesa-hero-n { color: var(--caldo); }
 
 .controlli {
   position: absolute;

@@ -10,6 +10,8 @@ const badge = document.getElementById('badge');
 const listenBtn = document.getElementById('ascolta');
 const fsBtn = document.getElementById('fullscreen');
 const hint = document.getElementById('audio-hint');
+const attesaHero = document.getElementById('attesa-hero');
+const attesaHeroN = document.getElementById('attesa-hero-n');
 
 const mobile = matchMedia('(max-width: 700px)').matches;
 const reducedMotion = matchMedia('(prefers-reduced-motion: reduce)').matches;
@@ -62,8 +64,11 @@ function wire(src) {
   });
   src.addEventListener('stats', (e) => {
     if (!feedActive(src)) return;
+    const n = e.detail.pending.toLocaleString('it-IT');
     const conto = document.getElementById('conto-attesa');
-    if (conto) conto.textContent = e.detail.pending.toLocaleString('it-IT');
+    if (conto) conto.textContent = n;
+    attesaHeroN.textContent = n;
+    attesaHero.hidden = false; // compare solo al primo dato reale, mai un placeholder
     audio.setMacro({ pending: e.detail.pending });
   });
   src.addEventListener('block', (e) => {
