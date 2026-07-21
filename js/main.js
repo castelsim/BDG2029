@@ -12,6 +12,7 @@ const fsBtn = document.getElementById('fullscreen');
 const hint = document.getElementById('audio-hint');
 const attesaHero = document.getElementById('attesa-hero');
 const attesaHeroN = document.getElementById('attesa-hero-n');
+const focusN = document.getElementById('focus-n');
 
 const mobile = matchMedia('(max-width: 700px)').matches;
 const reducedMotion = matchMedia('(prefers-reduced-motion: reduce)').matches;
@@ -85,6 +86,7 @@ function wire(src) {
     const conto = document.getElementById('conto-attesa');
     if (conto) conto.textContent = n;
     attesaHeroN.textContent = n;
+    if (focusN) focusN.textContent = n; // didascalia della modalità focus
     attesaHero.hidden = false; // compare solo al primo dato reale, mai un placeholder
     audio.setMacro({ pending: e.detail.pending });
   });
@@ -148,14 +150,34 @@ listenBtn.addEventListener('click', async () => {
   }
 });
 
-// schermo intero (dov'è supportato; su iPhone l'icona resta nascosta)
+// schermo intero → modalità focus: solo l'installazione e la didascalia.
+// I controlli spariscono dopo qualche secondo e riappaiono muovendo il mouse.
+let idleTimer = null;
+function resetIdle() {
+  document.body.classList.remove('idle');
+  clearTimeout(idleTimer);
+  if (document.body.classList.contains('focus')) {
+    idleTimer = setTimeout(() => document.body.classList.add('idle'), 3000);
+  }
+}
+function setFocus(on) {
+  document.body.classList.toggle('focus', on);
+  document.body.classList.remove('idle');
+  clearTimeout(idleTimer);
+  if (on) resetIdle();
+}
 if (document.documentElement.requestFullscreen) {
   fsBtn.hidden = false;
   fsBtn.addEventListener('click', () => {
     if (document.fullscreenElement) document.exitFullscreen();
     else document.documentElement.requestFullscreen();
   });
+  document.addEventListener('fullscreenchange', () => setFocus(!!document.fullscreenElement));
+  addEventListener('mousemove', () => { if (document.body.classList.contains('focus')) resetIdle(); });
 }
+
+// anteprima della modalità focus senza schermo intero (per la regia): ?focus=1
+if (new URLSearchParams(location.search).has('focus')) setFocus(true);
 
 // ciclo di rendering
 let prev = performance.now();

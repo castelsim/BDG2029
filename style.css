@@ -93,6 +93,32 @@ h1 {
 .attesa-hero { color: var(--testo-tenue); }
 #attesa-hero-n { color: var(--caldo); }
 
+/* modalità focus (a schermo intero): solo l'installazione + didascalia centrata,
+   frase e numero live come un'unica unità simmetrica in basso al centro */
+.focus-attesa {
+  position: absolute;
+  left: 0; right: 0;
+  bottom: 4.5svh;
+  text-align: center;
+  font-family: var(--mono);
+  font-size: clamp(0.9rem, 2vw, 1.15rem);
+  letter-spacing: 0.1em;
+  color: var(--testo-tenue);
+  display: none;
+}
+#focus-n { color: var(--caldo); }
+
+body.focus main,
+body.focus footer,
+body.focus .hero-alto,
+body.focus .stato,
+body.focus .scroll-hint { display: none; }
+body.focus .sottotitolo { bottom: 8.5svh; }
+body.focus .focus-attesa { display: block; }
+/* i controlli spariscono con l'immersione e riappaiono muovendo il mouse */
+body.focus.idle .controlli { opacity: 0; pointer-events: none; }
+.controlli { transition: opacity 0.5s ease; }
+
 .controlli {
   position: absolute;
   right: 1.4rem;
