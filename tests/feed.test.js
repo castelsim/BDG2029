@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
-import { normalizeBlock, normalizeProjected, normalizeBands, extractTx, pickTip } from '../js/feed.js';
+import { normalizeBlock, normalizeProjected, normalizeBands, extractTx, pickTip, MempoolFeed } from '../js/feed.js';
 
 const fx = JSON.parse(readFileSync(new URL('./fixtures/ws_samples.json', import.meta.url)));
 
@@ -56,4 +56,42 @@ test('extractTx: senza rate calcola fee/vsize; senza value usa 0', () => {
 test('pickTip: sceglie il blocco più alto a prescindere dall\'ordine', () => {
   assert.equal(pickTip(fx.blocksSnapshot).height, 958705);
   assert.equal(pickTip([]), null);
+});
+
+// registra gli eventi emessi da una MempoolFeed senza aprire davvero un WebSocket
+function spia(feed) {
+  const ev = [];
+  for (const t of ['block', 'init']) feed.addEventListener(t, (e) => ev.push({ t, height: e.detail.height }));
+  return ev;
+}
+
+test('_route: primo snapshot = init (nessun battito), poi block solo su altezza che sale', () => {
+  const feed = new MempoolFeed();
+  const ev = spia(feed);
+  feed._route({ blocks: [{ height: 100, timestamp: 10 }] });  // primo: init
+  feed._route({ blocks: [{ height: 100, timestamp: 10 }] });  // re-send stessa altezza: init (ancora)
+  feed._route({ block: { height: 101, timestamp: 20 } });     // nuovo blocco singolare: block
+  feed._route({ blocks: [{ height: 102, timestamp: 30 }] });  // nuovo blocco via array: block
+  assert.deepEqual(ev, [
+    { t: 'init', height: 100 },
+    { t: 'init', height: 100 },
+    { t: 'block', height: 101 },
+    { t: 'block', height: 102 },
+  ]);
+});
+
+test('_route: un blocco annunciato su entrambi i canali conta una volta sola', () => {
+  const feed = new MempoolFeed();
+  feed.lastHeight = 200;
+  const ev = spia(feed);
+  feed._route({ blocks: [{ height: 201, timestamp: 10 }], block: { height: 201, timestamp: 10 } });
+  assert.deepEqual(ev, [{ t: 'block', height: 201 }]); // niente doppio battito
+});
+
+test('_route: altezza che regredisce (reorg/array disordinato) viene ignorata', () => {
+  const feed = new MempoolFeed();
+  feed.lastHeight = 300;
+  const ev = spia(feed);
+  feed._route({ block: { height: 299, timestamp: 10 } });
+  assert.deepEqual(ev, []);
 });

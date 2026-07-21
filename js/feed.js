@@ -67,6 +67,7 @@ export class MempoolFeed extends EventTarget {
     this.delay = 5000;
     this.ws = null;
     this.closed = false;
+    this.lastHeight = null; // ultima altezza vista: rileva i nuovi blocchi e ne evita i doppioni
   }
 
   connect() {
@@ -98,11 +99,16 @@ export class MempoolFeed extends EventTarget {
   }
 
   _route(m) {
+    // Un nuovo blocco può arrivare come `block` (singolare) o come aggiornamento
+    // dell'array `blocks`: prendiamo l'altezza più alta tra i canali e la valutiamo
+    // una volta sola, così non se ne perde nessuno né se ne conta uno due volte
+    // (canali doppi, re-send su riconnessione).
+    let tipRaw = m.block ?? null;
     if (m.blocks) {
-      const tip = pickTip(m.blocks);
-      if (tip) this._emit('init', { tipTimestampMs: tip.timestamp * 1000, height: tip.height });
+      const t = pickTip(m.blocks);
+      if (t && (!tipRaw || (t.height ?? -1) > (tipRaw.height ?? -1))) tipRaw = t;
     }
-    if (m.block) this._emit('block', normalizeBlock(m.block));
+    if (tipRaw) this._newBlockOrInit(tipRaw);
     if (m['mempool-blocks']) {
       const p = normalizeProjected(m['mempool-blocks']);
       if (p) {
@@ -115,6 +121,21 @@ export class MempoolFeed extends EventTarget {
       this._emit('stats', { pending: m.mempoolInfo.size ?? 0, vps: m.vBytesPerSecond ?? 0 });
     }
     // m.conversions (prezzi) viene ignorato di proposito: vietato dai vincoli editoriali
+  }
+
+  // Decide se un blocco osservato è nuovo (→ evento `block`, fa scattare il battito) o è
+  // solo lo stato corrente (→ `init`, riancora l'anello al tempo reale, senza battito).
+  _newBlockOrInit(raw) {
+    const b = normalizeBlock(raw);
+    if (!Number.isFinite(b.height)) return;
+    if (this.lastHeight != null && b.height > this.lastHeight) {
+      this.lastHeight = b.height;
+      this._emit('block', b); // nuovo blocco: battito
+    } else if (this.lastHeight == null || b.height === this.lastHeight) {
+      this.lastHeight = Math.max(this.lastHeight ?? 0, b.height);
+      this._emit('init', { tipTimestampMs: b.timestampMs, height: b.height }); // ancora l'anello
+    }
+    // b.height < lastHeight (reorg raro o array non ordinato): ignorato, niente doppioni
   }
 
   _emit(type, detail) { this.dispatchEvent(new CustomEvent(type, { detail })); }

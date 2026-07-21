@@ -37,6 +37,15 @@ export class SimFeed extends EventTarget {
     this.height = 958_800;
     this.fill = 0.2;
     this.pending = 60_000;
+    this.feeFloor = null; // se impostato (da seed), il sim riparte dalla soglia reale
+  }
+
+  // continuità con la rete vera: il sim riprende da riempimento/soglia/coda correnti,
+  // così il passaggio a simulazione non riorganizza le particelle già in scena
+  seed({ fillRatio, feeFloor, pending } = {}) {
+    if (Number.isFinite(fillRatio)) this.fill = Math.min(1, Math.max(0, fillRatio));
+    if (Number.isFinite(feeFloor)) this.feeFloor = feeFloor;
+    if (Number.isFinite(pending)) this.pending = Math.max(1000, pending);
   }
 
   start() {
@@ -84,7 +93,9 @@ export class SimFeed extends EventTarget {
         vsizePerTx: 250 + Math.round(this.rand() * 150),
       };
     });
-    this._emit('projected', { fillRatio: this.fill, feeFloor: 0.2 + this.fill * 2, medianFee: 1, bands });
+    // soglia: quella ereditata dalla rete vera (continuità) o, in mancanza, dedotta dal riempimento
+    const feeFloor = this.feeFloor != null ? this.feeFloor : 0.2 + this.fill * 2;
+    this._emit('projected', { fillRatio: this.fill, feeFloor, medianFee: 1, bands });
     this._emit('stats', { pending: Math.round(this.pending), vps: 3000 });
     this._after(5000, () => this._statsLoop());
   }

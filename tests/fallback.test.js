@@ -58,3 +58,27 @@ test('SimFeed: a start() emette subito tx/projected/stats con le shape di Mempoo
   assert.deepEqual(Object.keys(got.stats).sort(), ['pending', 'vps']);
   assert.equal(f.timers.length, 0, 'stop() svuota i timer');
 });
+
+test('SimFeed.seed: eredita riempimento/soglia/coda dalla rete vera (continuità)', () => {
+  const f = new SimFeed(mulberry32(9));
+  f.seed({ fillRatio: 0.92, feeFloor: 0.47, pending: 88_000 });
+  assert.equal(f.fill, 0.92);
+  assert.equal(f.feeFloor, 0.47);
+  assert.equal(f.pending, 88_000);
+  let proj = null;
+  f.addEventListener('projected', (e) => { proj = e.detail; });
+  f.start();
+  f.stop();
+  // il primo projected riparte dagli stessi valori reali → nessun salto di soglia/capienza
+  // (fillRatio può crescere di un'inezia: start() aggiunge subito una transazione)
+  assert.ok(Math.abs(proj.fillRatio - 0.92) < 0.01);
+  assert.equal(proj.feeFloor, 0.47);
+});
+
+test('SimFeed.seed: ignora valori assenti o non finiti, mantiene i default', () => {
+  const f = new SimFeed(mulberry32(3));
+  f.seed({ fillRatio: null, feeFloor: undefined, pending: NaN });
+  assert.equal(f.fill, 0.2);
+  assert.equal(f.feeFloor, null);
+  assert.equal(f.pending, 60_000);
+});
